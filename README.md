@@ -19,7 +19,7 @@ A personal Chrome extension that brings Arc's sidebar to Chrome:
 2. Turn on **Developer mode** (top right).
 3. Click **Load unpacked** and choose this folder (`vtabs`, the one that contains `manifest.json`).
 4. Click the puzzle-piece icon in the toolbar and **pin** vtabs, then click its icon to open the sidebar.
-   `Alt+Shift+S` also opens it.
+   `⌘S` (Mac) or `Alt+Shift+S` (Windows/Linux) also opens it.
 5. Optional: for Arc's look, put the side panel on the left. Go to Settings → *Appearance* → *Side panel* → **Show on left** (`chrome://settings/appearance`).
 
 On first run, every tab you already have open goes into a "Home" space.
@@ -58,7 +58,7 @@ The extension ID stays `gkaleojfpcipaofanpfapmknhmfaeeko` on every computer beca
 | Action | Default |
 |---|---|
 | New tab in the current space | `⌘T` / `Ctrl+T` (built into Chrome) |
-| Open the sidebar | `Alt+Shift+S` |
+| Open the sidebar | `⌘S` on Mac (replaces Chrome's Save Page), `Alt+Shift+S` elsewhere |
 | Next / previous space | `Alt+Shift+→` / `Alt+Shift+←` |
 | Pin / unpin the current tab | `Alt+Shift+D` |
 | Add / remove the current tab from Favorites | (not set) |
@@ -88,7 +88,7 @@ So instead of "assign this space to the Work profile", you put your work spaces 
 ## Limitations
 
 - Chrome's horizontal tab strip can't be hidden by an extension. Collapsing spaces into tab groups is the closest available option.
-- The sidebar is Chrome's side panel, so it opens per window. Use `Alt+Shift+S` or the toolbar icon to open it.
+- The sidebar is Chrome's side panel, so it opens per window. Use `⌘S` / `Alt+Shift+S` or the toolbar icon to open it.
 - Favicons for tabs that aren't open come from Chrome's favicon cache. A site you've never visited on this computer shows a globe until you open it once.
 - Chrome-pinned tabs (Chrome's own pin) can't be put in tab groups, so they never move into a space's group.
 
