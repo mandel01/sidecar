@@ -794,6 +794,10 @@ function clearIndicator() {
 
 function computeDrop(e) {
   if (!drag) return null;
+  // The divider is the natural place to drop when dragging a tab up to pin it.
+  if (e.target.closest('#divider')) {
+    return { el: els.pinned, cls: 'drop-zone', target: { zone: 'pinned', spaceId: currentSpace().id, position: 'end' } };
+  }
   const zoneEl = e.target.closest('[data-zone]');
   if (!zoneEl) return null;
   const zone = zoneEl.dataset.zone;
@@ -830,7 +834,7 @@ document.addEventListener('dragstart', e => {
   const src = e.target.closest && e.target.closest('[draggable="true"][data-id]');
   if (!src || editing) return;
   hideMenu();
-  drag = { kind: src.dataset.kind, id: src.dataset.id, type: src.dataset.type };
+  const d = drag = { kind: src.dataset.kind, id: src.dataset.id, type: src.dataset.type };
   e.dataTransfer.effectAllowed = 'move';
   if (src.dataset.url) {
     e.dataTransfer.setData('text/uri-list', src.dataset.url);
@@ -838,8 +842,13 @@ document.addEventListener('dragstart', e => {
   } else {
     e.dataTransfer.setData('text/plain', src.dataset.id);
   }
-  document.body.classList.add('dragging');
-  requestAnimationFrame(() => src.classList.add('drag-src'));
+  // Changing layout during dragstart (body.dragging expands an empty Favorites bar)
+  // makes Chrome cancel the drag, so wait a frame, and skip if it already ended.
+  requestAnimationFrame(() => {
+    if (drag !== d) return;
+    document.body.classList.add('dragging');
+    src.classList.add('drag-src');
+  });
 });
 
 document.addEventListener('dragover', e => {
