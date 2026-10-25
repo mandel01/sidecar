@@ -20,7 +20,7 @@ A personal Chrome extension that brings Arc's sidebar to Chrome:
 3. Click **Load unpacked** and choose this folder (`vtabs`, the one that contains `manifest.json`).
 4. Click the puzzle-piece icon in the toolbar and **pin** vtabs, then click its icon to open the sidebar.
    `Alt+Shift+S` also opens it.
-5. Optional: to get Arc's look, drag the side panel to the left side. Click the side panel's menu and choose **Position → Left**, or go to Settings → Appearance → *Side panel position*.
+5. Optional: for Arc's look, put the side panel on the left. Go to Settings → *Appearance* → *Side panel* → **Show on left** (`chrome://settings/appearance`).
 
 On first run, every tab you already have open goes into a "Home" space.
 
