@@ -14,6 +14,7 @@ const els = {
   menu: $('menu'),
   toast: $('toast'),
   dialog: $('dialog'),
+  dragChip: $('drag-chip'),
 };
 
 const FALLBACK_ICON = 'data:image/svg+xml,' + encodeURIComponent(
@@ -873,6 +874,24 @@ function computeDrop(e) {
   return { el: zoneEl, cls: 'drop-zone', target: { zone, spaceId, position: atStart ? 'start' : 'end' } };
 }
 
+// Chrome's default drag image is the whole row, centered where it was grabbed,
+// which hides the drop line. Use a small icon + name chip instead. Its padding
+// is transparent, so the chip itself shows below and right of the cursor.
+// The chip lives offscreen permanently: adding elements during dragstart can
+// cancel the drag.
+function setDragChip(e, src) {
+  const chip = els.dragChip;
+  const icon = src.querySelector('.favicon, .folder-icon, img');
+  const name = src.querySelector('.title')?.textContent || src.title.split('\n')[0];
+  chip.classList.toggle('folder', src.dataset.type === 'folder');
+  const pill = document.createElement('div');
+  const label = document.createElement('span');
+  label.textContent = name;
+  pill.append(...(icon ? [icon.cloneNode(true)] : []), label);
+  chip.replaceChildren(pill);
+  e.dataTransfer.setDragImage(chip, 0, 0);
+}
+
 document.addEventListener('dragstart', e => {
   const src = e.target.closest && e.target.closest('[draggable="true"][data-id]');
   if (!src || editing) return;
@@ -885,6 +904,7 @@ document.addEventListener('dragstart', e => {
   } else {
     e.dataTransfer.setData('text/plain', src.dataset.id);
   }
+  setDragChip(e, src);
   // Changing layout during dragstart (body.dragging expands an empty Favorites bar)
   // makes Chrome cancel the drag, so wait a frame, and skip if it already ended.
   requestAnimationFrame(() => {

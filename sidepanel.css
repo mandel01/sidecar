@@ -282,23 +282,54 @@ input.rename {
 
 .drag-src { opacity: 0.35; }
 
-.drop-before::before, .drop-after::after {
+/* Small icon + name chip used as the drag image (see setDragChip). The
+   transparent top/left padding offsets it from the cursor. */
+#drag-chip {
+  position: fixed;
+  top: -200px;
+  left: 0;
+  padding: 14px 0 0 14px;
+  pointer-events: none;
+}
+#drag-chip > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 4px 10px 4px 8px;
+  border-radius: 7px;
+  background: var(--panel);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  font-size: 12px;
+  color: var(--text);
+}
+#drag-chip span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#drag-chip img { width: 16px; height: 16px; flex: none; border-radius: 3px; }
+
+/* The line is indented to the depth the item will land at, and starts with a
+   small ring so it stays readable when partly covered. */
+.drop-before::before, .drop-after::after, .row.folder.drop-inside::after {
   content: "";
   position: absolute;
-  left: 6px;
+  z-index: 2;
+  left: calc(2px + var(--depth, 0) * 16px);
   right: 6px;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--space);
+  height: 9px;
+  background:
+    radial-gradient(circle at 4.5px 50%, var(--bg) 2px, var(--space) 2.5px, var(--space) 4px, transparent 4.5px),
+    linear-gradient(var(--space), var(--space)) 8px 50% / calc(100% - 8px) 3px no-repeat;
   pointer-events: none;
 }
 
-.drop-before::before { top: -1px; }
-.drop-after::after { bottom: -1px; }
-.fav.drop-before::before, .fav.drop-after::after { top: 6px; bottom: 6px; width: 2px; height: auto; left: auto; right: auto; }
+.drop-before::before { top: -5px; }
+.drop-after::after { bottom: -4px; }
+.fav.drop-before::before, .fav.drop-after::after { top: 6px; bottom: 6px; width: 3px; height: auto; left: auto; right: auto; border-radius: 2px; background: var(--space); }
 .fav.drop-before::before { left: -4px; }
 .fav.drop-after::after { right: -4px; }
 .drop-inside { outline: 2px solid var(--space); outline-offset: -2px; }
+/* Dropping on a folder puts the item first inside it: one level deeper, just below the folder. */
+.row.folder.drop-inside { outline: none; background: color-mix(in srgb, var(--space) 10%, transparent); }
+.row.folder.drop-inside::after { bottom: -4px; left: calc(2px + (var(--depth, 0) + 1) * 16px); }
 .drop-zone { background: color-mix(in srgb, var(--space) 10%, transparent); border-radius: 10px; }
 
 /* Bottom bar ------------------------------------------------------------ */
