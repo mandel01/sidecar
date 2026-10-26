@@ -628,7 +628,7 @@ function openSettingsDialog() {
       </div>
 
       <div class="actions">
-        <span style="color:var(--muted);font-size:12px">vtabs v${chrome.runtime.getManifest().version}</span>
+        <span style="color:var(--muted);font-size:12px">Sidecar v${chrome.runtime.getManifest().version}</span>
         <span class="spacer"></span>
         <button class="btn" value="cancel" formnovalidate>Cancel</button>
         <button class="btn primary" value="ok">Save</button>
@@ -669,7 +669,7 @@ function openSettingsDialog() {
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `vtabs-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `sidecar-backup-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     } else if (act === 'import') {

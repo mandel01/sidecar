@@ -13,6 +13,7 @@
 
 import { uid, findNode, removeNode, walk, normalizeLayout, sameUrl } from './shared.js';
 
+// Storage keys keep the old "vtabs" name: renaming them would orphan existing synced layouts.
 const META_KEY = 'vtabs_meta';
 const CHUNK_PREFIX = 'vtabs_c';
 const CHUNK_SIZE = 7000;          // chrome.storage.sync allows 8192 bytes per item
@@ -35,7 +36,7 @@ function mutate(fn) {
     await persist(s);
     return result;
   });
-  queue = run.catch(err => console.error('[vtabs]', err));
+  queue = run.catch(err => console.error('[sidecar]', err));
   return run;
 }
 
@@ -65,7 +66,7 @@ async function load() {
   try {
     remote = await readSyncLayout();
   } catch (e) {
-    console.warn('[vtabs] could not read synced layout', e);
+    console.warn('[sidecar] could not read synced layout', e);
   }
   if (remote && remote.rev > s.layout.rev) s.layout = normalizeLayout(remote);
   else if (!got.layout && !remote) s.layout.rev = 1;
@@ -375,7 +376,7 @@ async function applyGroups(s, windowId) {
         if (missing.length) await chrome.tabs.group({ tabIds: missing, groupId: gid });
       }
     } catch (e) {
-      console.warn('[vtabs] grouping failed', e);
+      console.warn('[sidecar] grouping failed', e);
       continue;
     }
     s.runtime.groups[key] = gid;
@@ -793,11 +794,11 @@ const handlers = {
     if (!before && s.layout.settings.groupTabsBySpace) scheduleAllGroups();
   },
 
-  exportData: s => ({ app: 'vtabs', version: 1, exportedAt: new Date().toISOString(), layout: s.layout }),
+  exportData: s => ({ app: 'sidecar', version: 1, exportedAt: new Date().toISOString(), layout: s.layout }),
 
   importData: (s, { data }) => {
     const layout = data && data.layout ? data.layout : data;
-    if (!layout || !Array.isArray(layout.spaces)) throw new Error('That file does not look like a vtabs export.');
+    if (!layout || !Array.isArray(layout.spaces)) throw new Error('That file does not look like a Sidecar export.');
     s.layout = normalizeLayout(layout);
     s.runtime.bindings = {};
     pruneRuntime(s);

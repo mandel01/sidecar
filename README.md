@@ -1,4 +1,4 @@
-# vtabs: Arc-style spaces for Chrome
+# Sidecar: Arc-style spaces for Chrome
 
 A personal Chrome extension that brings Arc's sidebar to Chrome:
 
@@ -15,16 +15,16 @@ A personal Chrome extension that brings Arc's sidebar to Chrome:
 
 ## Installing
 
-The code lives at [github.com/mandel01/vtabs](https://github.com/mandel01/vtabs) (private). Chrome runs it straight from a local copy of the repo.
+The code lives at [github.com/mandel01/sidecar](https://github.com/mandel01/sidecar) (private). Chrome runs it straight from a local copy of the repo.
 
-1. Clone the repo. The usual location is `~/Code/vtabs`, but any folder works and it can be different on each computer:
+1. Clone the repo. The usual location is `~/Code/sidecar`, but any folder works and it can be different on each computer:
    ```
-   gh repo clone mandel01/vtabs ~/Code/vtabs
+   gh repo clone mandel01/sidecar ~/Code/sidecar
    ```
-   (or `git clone git@github.com:mandel01/vtabs.git ~/Code/vtabs`)
+   (or `git clone git@github.com:mandel01/sidecar.git ~/Code/sidecar`)
 2. Open `chrome://extensions` and turn on **Developer mode** (top right).
 3. Click **Load unpacked** and choose the cloned folder (the one that contains `manifest.json`).
-4. Click the puzzle-piece icon in the toolbar and **pin** vtabs, then click its icon to open the sidebar.
+4. Click the puzzle-piece icon in the toolbar and **pin** Sidecar, then click its icon to open the sidebar.
    `⌘S` (Mac) or `Alt+Shift+S` (Windows/Linux) also opens it.
 5. Optional: for Arc's look, put the side panel on the left. Go to Settings → *Appearance* → *Side panel* → **Show on left** (`chrome://settings/appearance`).
 
@@ -39,9 +39,9 @@ Your spaces, pinned tabs and favorites appear within a few seconds. They sync th
 
 The extension ID stays `gkaleojfpcipaofanpfapmknhmfaeeko` on every computer because of the `key` in `manifest.json`. Chrome only shares sync data between copies of the same extension ID, so **do not remove that key**.
 
-**Updating:** on each computer, run `git pull` in the repo folder, then click the ↻ reload button on the vtabs card in `chrome://extensions`. The version number on that card goes up with every commit, so comparing it across computers shows whether one is out of date.
+**Updating:** on each computer, run `git pull` in the repo folder, then click the ↻ reload button on the Sidecar card in `chrome://extensions`. The version number on that card goes up with every commit, so comparing it across computers shows whether one is out of date.
 
-**Moving the folder:** Chrome remembers where it loaded vtabs from, so after moving the folder you have to remove vtabs and **Load unpacked** again. Synced data comes back, but that computer's unpinned and archived tabs are lost, so use Settings → *Export…* first if you want a backup.
+**Moving the folder:** Chrome remembers where it loaded Sidecar from, so after moving the folder you have to remove Sidecar and **Load unpacked** again. Synced data comes back, but that computer's unpinned and archived tabs are lost, so use Settings → *Export…* first if you want a backup.
 
 ## Sync: what syncs and how secure it is
 
@@ -77,7 +77,7 @@ In the sidebar: **click** a tab to open it, **middle-click** to close it, **doub
 - **New tabs** (`⌘T`, links, anything) join the space of the window they open in. Links open in the same space as the tab they came from.
 - **Tab groups:** each space also appears as a tab group in Chrome's top tab strip. The current space's group is expanded and the others are collapsed, which keeps the strip tidy. If you click a tab from another space in the strip, the sidebar switches to that space. You can turn this off in Settings.
 - **Pinned tabs** keep their "home" URL. If a pinned tab has navigated somewhere else and you want the new page to be its home, right-click → *Set pinned URL to current page*.
-- **Restarting Chrome:** for open tabs to come back, set Chrome to reopen them: Settings → *On startup* → **Continue where you left off**. vtabs matches restored tabs back to their spaces and pinned entries. Unpinned tabs that weren't restored stay listed, dimmed, and reopen when you click them.
+- **Restarting Chrome:** for open tabs to come back, set Chrome to reopen them: Settings → *On startup* → **Continue where you left off**. Sidecar matches restored tabs back to their spaces and pinned entries. Unpinned tabs that weren't restored stay listed, dimmed, and reopen when you click them.
 - **Multiple windows:** each window can be on a different space.
 
 ## Profiles (Arc's separate logins)
@@ -85,7 +85,7 @@ In the sidebar: **click** a tab to open it, **middle-click** to close it, **doub
 Chrome extensions can't keep separate cookies or logins per space, so the closest match to Arc profiles is **Chrome profiles**, which is what you planned:
 
 - Create a profile per identity, for example *Personal* and *Work*, from the profile icon → **Add**.
-- Install vtabs in each profile with **Load unpacked**, pointing at the same folder.
+- Install Sidecar in each profile with **Load unpacked**, pointing at the same folder.
 - Each profile has its own spaces, pinned tabs and favorites, and syncs through whatever Google account that profile is signed into.
 
 So instead of "assign this space to the Work profile", you put your work spaces in the Work profile's window.
