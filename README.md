@@ -58,6 +58,22 @@ The extension ID stays `gkaleojfpcipaofanpfapmknhmfaeeko` on every computer beca
 - Chrome allows 100 KB of sync storage. The layout is compressed, so a few thousand pinned tabs fit. Settings → Sync shows how much is used.
 - **Backups:** Settings → *Export…* saves a JSON file, and *Import…* restores it. *Replace with synced layout* forces this computer to take the synced version.
 
+## iPhone and iPad
+
+Chrome on iOS can't run extensions, but it does sync bookmarks. Turn on Settings → *Mirror to bookmarks from this computer* and Sidecar keeps a copy of your layout in **Other Bookmarks → Sidecar**:
+
+```
+Sidecar/
+  ★ Favorites/
+  🏠 Home/        ← one folder per space, with its pinned tabs and folders
+  💼 Work/
+```
+
+- It updates a few seconds after any change, and Chrome syncs the bookmarks to your phone. Unpinned and archived tabs aren't included.
+- Sidecar owns that folder, so anything you change inside it, on the phone or in the bookmark manager, gets overwritten. Nothing outside it is touched.
+- Turn it on for **one computer only**. The layout is the same everywhere, and two computers rewriting the same folder can make bookmark sync create duplicates.
+- Turning it off stops the updates and leaves the folder where it is. Delete the folder yourself if you no longer want it.
+
 ## Keyboard shortcuts
 
 | Action | Default |

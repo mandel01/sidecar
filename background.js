@@ -51,6 +51,7 @@ function normalizeRuntime(r = {}) {
     stale: Array.isArray(r.stale) ? r.stale : [], // bindings waiting to be re-matched after restart
     lastSpaceId: r.lastSpaceId || null,
     sync: r.sync || { status: 'pending', at: 0, error: '', bytes: 0 },
+    bookmarks: r.bookmarks || { enabled: false, folderId: null, at: 0, error: '' }, // mirror to Other Bookmarks
   };
 }
 
@@ -85,6 +86,7 @@ async function load() {
   if (!remote || remote.rev < s.layout.rev) schedulePush();
   ensureAlarm();
   scheduleAllGroups();
+  if (s.runtime.bookmarks.enabled) scheduleBookmarks();
   return s;
 }
 
@@ -94,6 +96,7 @@ async function persist(s) {
     s.layout.rev = Date.now();
     lastLayoutKey = key;
     schedulePush();
+    if (s.runtime.bookmarks.enabled) scheduleBookmarks();
   }
   await chrome.storage.local.set({ layout: s.layout, runtime: s.runtime });
 }
@@ -459,6 +462,7 @@ function applyRemoteLayout(s, remote) {
   pruneRuntime(s);
   Object.assign(s.runtime.sync, { status: 'ok', at: Date.now(), error: '' });
   scheduleAllGroups();
+  if (s.runtime.bookmarks.enabled) scheduleBookmarks();
 }
 
 function schedulePull(attempt = 0) {
@@ -472,6 +476,89 @@ function schedulePull(attempt = 0) {
     }
     if (remote && remote.rev > s.layout.rev) applyRemoteLayout(s, remote);
   }), 1500);
+}
+
+// ---------------------------------------------------------------------------
+// Bookmarks mirror. Keeps Other Bookmarks/Sidecar in step with the layout so
+// pinned tabs and favorites reach Chrome on iOS, which can't run extensions.
+// The folder is Sidecar's: edits made inside it get overwritten.
+
+const BOOKMARK_FOLDER = 'Sidecar';
+
+let bookmarkTimer = null;
+function scheduleBookmarks(delay = 3000) {
+  clearTimeout(bookmarkTimer);
+  bookmarkTimer = setTimeout(() => mutate(mirrorBookmarks), delay);
+}
+
+function bookmarkTree(layout) {
+  const nodes = list => list.map(n => n.type === 'folder'
+    ? { title: n.name, children: nodes(n.children) }
+    : { title: n.customTitle || n.title || n.url, url: n.url }).filter(n => n.children || n.url);
+  return [
+    { title: '★ Favorites', children: nodes(layout.favorites) },
+    ...layout.spaces.map(sp => ({ title: `${sp.icon} ${sp.name}`.trim(), children: nodes(sp.pinned) })),
+  ];
+}
+
+async function otherBookmarksId() {
+  const [root] = await chrome.bookmarks.getTree();
+  const other = root.children.find(n => n.folderType === 'other') || root.children.find(n => n.id === '2') || root.children[1];
+  return other.id;
+}
+
+async function mirrorFolderId(bm) {
+  if (bm.folderId) {
+    const [f] = await chrome.bookmarks.get(bm.folderId).catch(() => []);
+    if (f && !f.url) return f.id;
+  }
+  const parentId = await otherBookmarksId();
+  // Adopt a folder another computer already made, rather than adding a duplicate.
+  const existing = (await chrome.bookmarks.getChildren(parentId)).find(b => !b.url && b.title === BOOKMARK_FOLDER);
+  const f = existing || await chrome.bookmarks.create({ parentId, title: BOOKMARK_FOLDER });
+  return f.id;
+}
+
+// Updates parentId's children in place to match `desired`, reusing bookmarks
+// where possible (folders by title, links by URL) so sync sees small changes.
+async function syncBookmarkFolder(parentId, desired) {
+  const pool = await chrome.bookmarks.getChildren(parentId);
+  const matches = desired.map(d => {
+    const i = pool.findIndex(b => d.children ? !b.url && b.title === d.title : b.url === d.url);
+    return i < 0 ? null : pool.splice(i, 1)[0];
+  });
+  for (const b of pool) await (b.url ? chrome.bookmarks.remove(b.id) : chrome.bookmarks.removeTree(b.id));
+  const order = (await chrome.bookmarks.getChildren(parentId)).map(b => b.id);
+  let i = 0;
+  for (const [k, d] of desired.entries()) {
+    let b = matches[k];
+    if (!b) {
+      b = await chrome.bookmarks.create({ parentId, index: i, title: d.title, url: d.url }).catch(() => null);
+      if (!b) continue; // a URL Chrome won't bookmark
+      order.splice(i, 0, b.id);
+    } else {
+      if (b.title !== d.title) await chrome.bookmarks.update(b.id, { title: d.title });
+      if (order[i] !== b.id) {
+        await chrome.bookmarks.move(b.id, { parentId, index: i });
+        order.splice(order.indexOf(b.id), 1);
+        order.splice(i, 0, b.id);
+      }
+    }
+    if (d.children) await syncBookmarkFolder(b.id, d.children);
+    i++;
+  }
+}
+
+async function mirrorBookmarks(s) {
+  const bm = s.runtime.bookmarks;
+  if (!bm.enabled) return;
+  try {
+    bm.folderId = await mirrorFolderId(bm);
+    await syncBookmarkFolder(bm.folderId, bookmarkTree(s.layout));
+    Object.assign(bm, { at: Date.now(), error: '' });
+  } catch (e) {
+    Object.assign(bm, { at: Date.now(), error: String(e.message || e) });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -800,6 +887,12 @@ const handlers = {
     s.layout.settings.archiveHours = Number.isFinite(hours) && hours > 0 ? hours : 0;
     if (before && !s.layout.settings.groupTabsBySpace) await ungroupAll(s);
     if (!before && s.layout.settings.groupTabsBySpace) scheduleAllGroups();
+  },
+
+  setBookmarkMirror: async (s, { enabled }) => {
+    s.runtime.bookmarks.enabled = !!enabled;
+    if (enabled) await mirrorBookmarks(s);
+    return s.runtime.bookmarks;
   },
 
   exportData: s => ({ app: 'sidecar', version: 1, exportedAt: new Date().toISOString(), layout: s.layout }),

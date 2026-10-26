@@ -609,6 +609,7 @@ function openArchiveDialog() {
 function openSettingsDialog() {
   const st = layout.settings;
   const sync = runtime.sync || {};
+  const bm = runtime.bookmarks || {};
   const syncText = sync.status === 'ok'
     ? `Synced ${timeAgo(sync.at)} ago · ${Math.round((sync.bytes || 0) / 1024 * 10) / 10} KB of 100 KB used`
     : sync.status === 'error' ? `Sync error: ${sync.error}` : 'Waiting to sync…';
@@ -628,6 +629,11 @@ function openSettingsDialog() {
         <button type="button" class="btn" data-act="sync">Sync now</button>
         <button type="button" class="btn" data-act="pull">Replace with synced layout</button>
       </div>
+
+      <h3>iPhone &amp; iPad</h3>
+      <p>Chrome on iOS can’t run extensions, but it does sync bookmarks. This keeps a copy of your favorites and pinned tabs in Other Bookmarks → Sidecar, one folder per space. Changes made inside that folder get overwritten.</p>
+      <label class="check"><input type="checkbox" name="mirrorBookmarks"> Mirror to bookmarks from this computer <span style="color:var(--muted)">(turn on for one computer only)</span></label>
+      <p class="bookmark-status" style="color:var(--muted)"></p>
 
       <h3>Backup</h3>
       <div class="actions" style="margin-top:6px">
@@ -659,11 +665,18 @@ function openSettingsDialog() {
         groupTabsBySpace: f.elements.groupTabsBySpace.checked,
       },
     });
+    if (f.elements.mirrorBookmarks.checked !== !!bm.enabled) {
+      send({ type: 'setBookmarkMirror', enabled: f.elements.mirrorBookmarks.checked });
+    }
   });
   const f = d.querySelector('form');
   f.elements.archiveHours.value = st.archiveHours;
   f.elements.compactTitles.checked = st.compactTitles;
   f.elements.groupTabsBySpace.checked = st.groupTabsBySpace;
+  f.elements.mirrorBookmarks.checked = !!bm.enabled;
+  d.querySelector('.bookmark-status').textContent = !bm.enabled ? ''
+    : bm.error ? `Bookmark error: ${bm.error}`
+    : bm.at ? `Updated ${timeAgo(bm.at)} ago` : 'Waiting to update…';
   const status = d.querySelector('.sync-status');
   status.textContent = syncText;
   const file = d.querySelector('input[type=file]');
