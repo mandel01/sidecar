@@ -203,17 +203,6 @@ body.dragging #favorites:empty::after {
 .row:hover .hover-btn { display: grid; }
 .hover-btn:hover { background: var(--row-hover); color: var(--text); }
 
-.folder .chevron {
-  width: 16px;
-  flex: none;
-  text-align: center;
-  color: var(--muted);
-  font-size: 10px;
-  transition: transform 0.12s;
-}
-
-.folder:not(.collapsed) .chevron { transform: rotate(90deg); }
-
 .folder .folder-icon {
   width: 16px;
   height: 16px;
@@ -223,6 +212,8 @@ body.dragging #favorites:empty::after {
   stroke-width: 1.4;
   stroke-linejoin: round;
 }
+
+.folder .folder-icon .dot { fill: var(--space); stroke: none; }
 
 .folder .title { font-weight: 500; }
 

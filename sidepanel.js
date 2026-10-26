@@ -18,7 +18,13 @@ const els = {
 
 const FALLBACK_ICON = 'data:image/svg+xml,' + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" fill="none" stroke="#8b8f97" stroke-width="1.3"/><path d="M1.5 8h13M8 1.5c2 2 2.6 4 2.6 6.5S10 12.5 8 14.5M8 1.5C6 3.5 5.4 5.5 5.4 8S6 12.5 8 14.5" fill="none" stroke="#8b8f97" stroke-width="1.1"/></svg>');
-const FOLDER_SVG = '<svg class="folder-icon" viewBox="0 0 16 16"><path d="M1.5 4.5v8a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H8L6.5 3.5h-4a1 1 0 0 0-1 1Z"/></svg>';
+const FOLDER_CLOSED_PATH = '<path d="M1.5 4.5v8a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H8L6.5 3.5h-4a1 1 0 0 0-1 1Z"/>';
+const FOLDER_SVG = {
+  closed: `<svg class="folder-icon" viewBox="0 0 16 16">${FOLDER_CLOSED_PATH}</svg>`,
+  open: '<svg class="folder-icon" viewBox="0 0 16 16"><path d="M1.5 12.5v-8a1 1 0 0 1 1-1h4L8 5h5a1 1 0 0 1 1 1v1.5"/><path d="M1.5 12.5l1.8-4.3a1 1 0 0 1 .9-.7h10.3a.6.6 0 0 1 .55.85l-1.75 4.55a1 1 0 0 1-.9.6H2.5a1 1 0 0 1-1-1Z"/></svg>',
+  // Closed, but some of its tabs are open (and still listed under it).
+  partial: `<svg class="folder-icon" viewBox="0 0 16 16">${FOLDER_CLOSED_PATH}<circle class="dot" cx="10.5" cy="9.5" r="2"/></svg>`,
+};
 
 let layout = null;
 let runtime = null;
@@ -167,24 +173,31 @@ function renderHeader(space) {
   els.spaceName.textContent = space.name;
 }
 
-function renderNodes(nodes, depth, out) {
+const hasOpenTab = nodes => nodes.some(n => n.type === 'folder' ? hasOpenTab(n.children) : !!boundTab(n.id));
+
+// openOnly: inside a closed folder, list just the open tabs (and folders leading to them).
+function renderNodes(nodes, depth, out, openOnly = false) {
   for (const n of nodes) {
     if (n.type === 'folder') {
+      const partial = (openOnly || n.collapsed) && hasOpenTab(n.children);
+      if (openOnly && !partial) continue;
+      const state = partial ? 'partial' : n.collapsed ? 'closed' : 'open';
       const wrap = document.createElement('div');
       wrap.className = 'folder-wrap';
       wrap.dataset.folder = n.id;
       const row = document.createElement('div');
-      row.className = 'row folder' + (n.collapsed ? ' collapsed' : '');
+      row.className = 'row folder' + (state === 'open' ? '' : ' collapsed') + (partial ? ' partial' : '');
       row.draggable = true;
       Object.assign(row.dataset, { kind: 'pinned', id: n.id, type: 'folder' });
       row.style.setProperty('--depth', depth);
-      row.innerHTML = `<span class="chevron">▶</span>${FOLDER_SVG}<span class="title"></span>`;
+      row.innerHTML = `${FOLDER_SVG[state]}<span class="title"></span>`;
       row.querySelector('.title').textContent = n.name;
       wrap.append(row);
-      if (!n.collapsed) renderNodes(n.children, depth + 1, wrap);
+      if (state !== 'closed') renderNodes(n.children, depth + 1, wrap, partial);
       out.append(wrap);
     } else {
       const live = boundTab(n.id);
+      if (openOnly && !live) continue;
       out.append(tabRow({
         kind: 'pinned',
         id: n.id,
@@ -819,7 +832,7 @@ function computeDrop(e) {
     } else {
       const f = (e.clientY - r.top) / r.height;
       if (row.dataset.type === 'folder') {
-        position = f < 0.28 ? 'before' : (f > 0.72 && row.classList.contains('collapsed') ? 'after' : 'inside');
+        position = f < 0.28 ? 'before' : (f > 0.72 && row.classList.contains('collapsed') && !row.classList.contains('partial') ? 'after' : 'inside');
       } else {
         position = f < 0.5 ? 'before' : 'after';
       }
