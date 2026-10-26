@@ -628,6 +628,7 @@ function openSettingsDialog() {
       </div>
 
       <div class="actions">
+        <span style="color:var(--muted);font-size:12px">vtabs v${chrome.runtime.getManifest().version}</span>
         <span class="spacer"></span>
         <button class="btn" value="cancel" formnovalidate>Cancel</button>
         <button class="btn primary" value="ok">Save</button>
