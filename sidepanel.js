@@ -781,7 +781,8 @@ document.addEventListener('dblclick', e => {
   if (editing) return;
   if (e.target.closest('#space-name')) return renameSpaceInline();
   const row = rowOf(e.target);
-  if (row && row.classList.contains('row') && e.target.closest('.title')) startRename(row);
+  // Folders rename from the right-click menu only: they get double-clicked too often by accident.
+  if (row && row.classList.contains('row') && row.dataset.type !== 'folder' && e.target.closest('.title')) startRename(row);
 });
 
 document.addEventListener('contextmenu', e => {

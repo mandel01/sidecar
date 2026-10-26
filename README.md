@@ -88,7 +88,7 @@ To change any of these, go to `chrome://extensions/shortcuts`, or Settings → *
 
 **Recommended on a Mac:** set *Open the sidebar* to `⌘S`, which is closer to Arc's sidebar toggle. Chrome won't let an extension claim one of its own shortcuts by default (`⌘S` is Save Page), so you have to set it by hand in `chrome://extensions/shortcuts`. Do this on each computer, and again whenever you remove and reinstall Sidecar.
 
-In the sidebar: **click** a tab to open it, **middle-click** to close it, **double-click** its name to rename, and **right-click** for more options (copy link, move to space, "Set pinned URL to current page", and so on).
+In the sidebar: **click** a tab to open it, **middle-click** to close it, **double-click** its name to rename (folders: right-click → *Rename*), and **right-click** for more options (copy link, move to space, "Set pinned URL to current page", and so on).
 
 ## How it maps onto Chrome
 
