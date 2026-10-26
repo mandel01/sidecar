@@ -13,11 +13,17 @@ A personal Chrome extension that brings Arc's sidebar to Chrome:
 - **Favorites** appear in every space, as icons at the top.
 - **Sync**: spaces, pinned tabs, folders, favorites and settings follow you to every computer signed into the same Chrome profile.
 
-## Installing (first computer)
+## Installing
 
-1. Open `chrome://extensions`.
-2. Turn on **Developer mode** (top right).
-3. Click **Load unpacked** and choose this folder (`vtabs`, the one that contains `manifest.json`).
+The code lives at [github.com/mandel01/vtabs](https://github.com/mandel01/vtabs) (private). Chrome runs it straight from a local copy of the repo.
+
+1. Clone the repo. The usual location is `~/Code/vtabs`, but any folder works and it can be different on each computer:
+   ```
+   gh repo clone mandel01/vtabs ~/Code/vtabs
+   ```
+   (or `git clone git@github.com:mandel01/vtabs.git ~/Code/vtabs`)
+2. Open `chrome://extensions` and turn on **Developer mode** (top right).
+3. Click **Load unpacked** and choose the cloned folder (the one that contains `manifest.json`).
 4. Click the puzzle-piece icon in the toolbar and **pin** vtabs, then click its icon to open the sidebar.
    `⌘S` (Mac) or `Alt+Shift+S` (Windows/Linux) also opens it.
 5. Optional: for Arc's look, put the side panel on the left. Go to Settings → *Appearance* → *Side panel* → **Show on left** (`chrome://settings/appearance`).
@@ -26,17 +32,16 @@ On first run, every tab you already have open goes into a "Home" space.
 
 ## Installing on more computers
 
-The folder is already in Dropbox, so each computer has the same copy:
+1. Repeat steps 1–4 above on that computer.
+2. Sign into Chrome with the **same Google account**, and check that sync is on for extensions: Settings → *You and Google* → *Sync and Google services* → *Manage what you sync*, with **Extensions** on.
 
-1. Wait for Dropbox to finish syncing the `vtabs` folder.
-2. On that computer, repeat steps 1–4 above and point **Load unpacked** at the Dropbox copy. The folder path can be different on each computer.
-3. Sign into Chrome with the **same Google account**, and check that sync is on for extensions: Settings → *You and Google* → *Sync and Google services* → *Manage what you sync*, with **Extensions** on.
-
-Your spaces, pinned tabs and favorites appear within a few seconds.
+Your spaces, pinned tabs and favorites appear within a few seconds. They sync through Chrome, not through git; the repo only carries the code.
 
 The extension ID stays `gkaleojfpcipaofanpfapmknhmfaeeko` on every computer because of the `key` in `manifest.json`. Chrome only shares sync data between copies of the same extension ID, so **do not remove that key**.
 
-**Updating:** when the code changes, Dropbox delivers the new files. Then click the ↻ reload button on the vtabs card in `chrome://extensions`, on each computer.
+**Updating:** on each computer, run `git pull` in the repo folder, then click the ↻ reload button on the vtabs card in `chrome://extensions`. The version number on that card goes up with every commit, so comparing it across computers shows whether one is out of date.
+
+**Moving the folder:** Chrome remembers where it loaded vtabs from, so after moving the folder you have to remove vtabs and **Load unpacked** again. Synced data comes back, but that computer's unpinned and archived tabs are lost, so use Settings → *Export…* first if you want a backup.
 
 ## Sync: what syncs and how secure it is
 
