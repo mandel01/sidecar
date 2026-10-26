@@ -6,7 +6,7 @@ A personal Chrome extension that brings Arc's sidebar to Chrome:
 - **Pinned tabs** sit above the line and are kept until you delete them.
   - Open: hover shows **−**, which closes the tab but keeps it pinned.
   - Not open: hover shows **×**, which deletes the pinned tab.
-- **Unpinned tabs** sit below the line and are archived after **18 hours** without use. You can change the time in Settings. To get one back, open the archive (box icon, bottom left).
+- **Unpinned tabs** sit below the line and are archived after **12 hours** without use. You can change the time in Settings. To get one back, open the archive (box icon, bottom left).
 - **Folders** in the pinned section can be nested. Create one with the folder button in the header or from the right-click menu. Click a folder to open or close it. A closed folder still lists any of its tabs that are open, and its icon gets a colored dot.
 - **Drag and drop** works for tabs and folders: reorder them, drop them into folders, drag across the line to pin or unpin, drag up to Favorites, or drop onto a space icon at the bottom to move them to that space.
 - **Spaces** each have their own name, emoji icon and color, and the sidebar is tinted with the space's color. Switch spaces by clicking the icons at the bottom, swiping sideways with two fingers on the sidebar, or pressing `Alt+Shift+←/→`.
@@ -25,7 +25,7 @@ The code lives at [github.com/mandel01/sidecar](https://github.com/mandel01/side
 2. Open `chrome://extensions` and turn on **Developer mode** (top right).
 3. Click **Load unpacked** and choose the cloned folder (the one that contains `manifest.json`).
 4. Click the puzzle-piece icon in the toolbar and **pin** Sidecar, then click its icon to open the sidebar.
-   `⌘S` (Mac) or `Alt+Shift+S` (Windows/Linux) also opens it.
+   `⌥⇧S` (Mac) or `Alt+Shift+S` (Windows/Linux) also opens it. On a Mac, `⌘S` is recommended because it's closer to Arc, but you have to set it yourself (see [Keyboard shortcuts](#keyboard-shortcuts)).
 5. Optional: for Arc's look, put the side panel on the left. Go to Settings → *Appearance* → *Side panel* → **Show on left** (`chrome://settings/appearance`).
 
 On first run, every tab you already have open goes into a "Home" space.
@@ -63,12 +63,14 @@ The extension ID stays `gkaleojfpcipaofanpfapmknhmfaeeko` on every computer beca
 | Action | Default |
 |---|---|
 | New tab in the current space | `⌘T` / `Ctrl+T` (built into Chrome) |
-| Open the sidebar | `⌘S` on Mac (replaces Chrome's Save Page), `Alt+Shift+S` elsewhere |
+| Open the sidebar | `Alt+Shift+S` (`⌥⇧S` on Mac) |
 | Next / previous space | `Alt+Shift+→` / `Alt+Shift+←` |
 | Pin / unpin the current tab | `Alt+Shift+D` |
 | Add / remove the current tab from Favorites | (not set) |
 
 To change any of these, go to `chrome://extensions/shortcuts`, or Settings → *Edit shortcuts…*. On a Mac, `Alt` is `⌥ Option`.
+
+**Recommended on a Mac:** set *Open the sidebar* to `⌘S`, which is closer to Arc's sidebar toggle. Chrome won't let an extension claim one of its own shortcuts by default (`⌘S` is Save Page), so you have to set it by hand in `chrome://extensions/shortcuts`. Do this on each computer, and again whenever you remove and reinstall Sidecar.
 
 In the sidebar: **click** a tab to open it, **middle-click** to close it, **double-click** its name to rename, and **right-click** for more options (copy link, move to space, "Set pinned URL to current page", and so on).
 
@@ -93,7 +95,7 @@ So instead of "assign this space to the Work profile", you put your work spaces 
 ## Limitations
 
 - Chrome's horizontal tab strip can't be hidden by an extension. Collapsing spaces into tab groups is the closest available option.
-- The sidebar is Chrome's side panel, so it opens per window. Use `⌘S` / `Alt+Shift+S` or the toolbar icon to open it.
+- The sidebar is Chrome's side panel, so it opens per window. Use the keyboard shortcut or the toolbar icon to open it.
 - Favicons for tabs that aren't open come from Chrome's favicon cache. A site you've never visited on this computer shows a globe until you open it once.
 - Chrome-pinned tabs (Chrome's own pin) can't be put in tab groups, so they never move into a space's group.
 
