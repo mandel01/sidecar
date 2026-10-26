@@ -17,6 +17,19 @@ A personal Chrome extension that brings Arc's sidebar to Chrome:
 
 The code lives at [github.com/mandel01/sidecar](https://github.com/mandel01/sidecar) (private). Chrome runs it straight from a local copy of the repo.
 
+### Before you install
+
+Do these in Chrome first, in every profile you'll use Sidecar in:
+
+1. **Sign into Chrome** with your Google account. Sidecar's sync only works if you're signed in before installing it.
+2. **Check sync is on.** Open `chrome://settings/syncSetup` (on some Chrome versions, click your name/profile there first) and go to *Manage what you sync*:
+   - **Extensions** must be on. This is where Sidecar's spaces, pinned tabs, favorites and settings sync.
+   - **Bookmarks** needs to be on only if you use the [iPhone bookmarks mirror](#iphone-and-ipad).
+   - **History and tabs** isn't needed.
+3. **Reopen tabs on startup.** Settings → *On startup* → **Continue where you left off** (`chrome://settings/onStartup`). Without it, your open tabs don't come back after Chrome restarts.
+
+### Install
+
 1. Clone the repo. The usual location is `~/Code/sidecar`, but any folder works and it can be different on each computer:
    ```
    gh repo clone mandel01/sidecar ~/Code/sidecar
@@ -32,8 +45,8 @@ On first run, every tab you already have open goes into a "Home" space.
 
 ## Installing on more computers
 
-1. Repeat steps 1–4 above on that computer.
-2. Sign into Chrome with the **same Google account**, and check that sync is on for extensions: Settings → *You and Google* → *Sync and Google services* → *Manage what you sync*, with **Extensions** on.
+1. **Back up first.** On the computer that already has Sidecar, open Settings → *Export…* in **each profile** and keep the files. If something goes wrong on the new computer, *Import…* puts the layout back.
+2. On the new computer, follow [Before you install](#before-you-install) and [Install](#install), signed into the **same Google account** as on the first computer. Do this for each profile.
 
 Your spaces, pinned tabs and favorites appear within a few seconds. They sync through Chrome, not through git; the repo only carries the code.
 
@@ -95,7 +108,7 @@ In the sidebar: **click** a tab to open it, **middle-click** to close it, **doub
 - **New tabs** (`⌘T`, links, anything) join the space of the window they open in. Links open in the same space as the tab they came from.
 - **Tab groups:** each space also appears as a tab group in Chrome's top tab strip. The current space's group is expanded and the others are collapsed, which keeps the strip tidy. If you click a tab from another space in the strip, the sidebar switches to that space. You can turn this off in Settings.
 - **Pinned tabs** keep their "home" URL. If a pinned tab has navigated somewhere else and you want the new page to be its home, right-click → *Set pinned URL to current page*. To type a home URL yourself, right-click → *Edit pinned URL…* (*Edit URL…* on favorites). If the tab is open, it goes to the new URL.
-- **Restarting Chrome:** for open tabs to come back, set Chrome to reopen them: Settings → *On startup* → **Continue where you left off**. Sidecar matches restored tabs back to their spaces and pinned entries. Unpinned tabs that weren't restored stay listed, dimmed, and reopen when you click them.
+- **Restarting Chrome:** with **Continue where you left off** set (see [Before you install](#before-you-install)), Sidecar matches restored tabs back to their spaces and pinned entries. Unpinned tabs that weren't restored stay listed, dimmed, and reopen when you click them.
 - **Multiple windows:** each window can be on a different space.
 
 ## Profiles (Arc's separate logins)
