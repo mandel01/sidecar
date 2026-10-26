@@ -681,10 +681,18 @@ const handlers = {
     scheduleAllGroups();
   },
 
-  setEntryUrl: async (s, { id }) => {
+  setEntryUrl: async (s, { id, url }) => {
     const e = findEntry(s, id);
     const b = s.runtime.bindings[id];
-    if (!e || !b) return;
+    if (!e) return;
+    if (url) {
+      // A typed URL: store it, and take an open tab there so it matches.
+      e.entry.url = url;
+      e.entry.title = url;
+      if (b) await chrome.tabs.update(b.tabId, { url }).catch(() => {});
+      return;
+    }
+    if (!b) return;
     const t = await chrome.tabs.get(b.tabId).catch(() => null);
     if (!t) return;
     e.entry.url = t.url;

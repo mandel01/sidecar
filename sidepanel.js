@@ -422,6 +422,7 @@ function rowMenu(row, x, y) {
       { text: 'Rename', run: () => renameFavorite(id, item) },
       { text: 'Copy link', run: () => copy(item.url) },
       item.live && { text: 'Set to current page', run: () => send({ type: 'setEntryUrl', id }) },
+      { text: 'Edit URL…', run: () => editEntryUrl(id, item) },
       item.live && { text: 'Close tab (keep favorite)', run: () => send({ type: 'minimize', id }) },
       '-',
       { text: 'Move to pinned in this space', run: () => send({ type: 'unfavorite', id, windowId }) },
@@ -439,6 +440,7 @@ function rowMenu(row, x, y) {
     showMenu(x, y, [
       rename,
       item.live && { text: 'Set pinned URL to current page', run: () => send({ type: 'setEntryUrl', id }) },
+      { text: 'Edit pinned URL…', run: () => editEntryUrl(id, item) },
       { text: 'Copy link', run: () => copy(item.url) },
       { text: 'Add to Favorites', run: () => send({ type: 'favorite', kind: 'pinned', id }) },
       { text: 'Unpin', run: () => send({ type: 'unpin', id, windowId }) },
@@ -466,6 +468,19 @@ function spaceMenu(x, y, space) {
 function renameFavorite(id, item) {
   const name = prompt('Name for this favorite (leave empty to use the page title):', item.renameValue);
   if (name !== null) send({ type: 'rename', kind: 'entry', id, name });
+}
+
+function editEntryUrl(id, item) {
+  let url = prompt('URL:', item.node.url);
+  if (url === null || !(url = url.trim())) return;
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) url = 'https://' + url;
+  try {
+    url = new URL(url).href;
+  } catch {
+    toast('That isn’t a valid URL');
+    return;
+  }
+  send({ type: 'setEntryUrl', id, url });
 }
 
 async function newFolder(parentId) {
