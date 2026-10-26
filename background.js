@@ -105,6 +105,8 @@ async function persist(s) {
 // Lookups
 
 const tabUrl = t => t.url || t.pendingUrl || '';
+// Sidecar's newtab.html can show up under either URL.
+const isNewTabUrl = url => url.startsWith('chrome://newtab') || url.startsWith(chrome.runtime.getURL('newtab.html'));
 const spaceById = (s, id) => s.layout.spaces.find(sp => sp.id === id);
 
 function getWindowSpace(s, windowId) {
@@ -217,7 +219,7 @@ function removeRecord(s, id) {
 // After a restart, restored tabs get new ids. Match them back up by URL.
 function tryClaim(s, tab, freshRec = null) {
   const url = tabUrl(tab);
-  if (!url || url.startsWith('chrome://newtab')) return false;
+  if (!url || isNewTabUrl(url)) return false;
   const rt = s.runtime;
   const si = rt.stale.findIndex(b => sameUrl(b.url, url) && findEntry(s, b.entryId) && !rt.bindings[b.entryId]);
   if (si >= 0) {
@@ -306,7 +308,7 @@ async function archiveRecords(s, recs) {
   const now = Date.now();
   for (const r of recs) {
     removeRecord(s, r.id);
-    if (r.url && !r.url.startsWith('chrome://newtab')) {
+    if (r.url && !isNewTabUrl(r.url)) {
       s.runtime.archived.unshift({ url: r.url, title: r.customTitle || r.title, spaceId: r.spaceId, archivedAt: now });
     }
   }

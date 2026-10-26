@@ -106,6 +106,7 @@ In the sidebar: **click** a tab to open it, **middle-click** to close it, **doub
 ## How it maps onto Chrome
 
 - **New tabs** (`⌘T`, links, anything) join the space of the window they open in. Links open in the same space as the tab they came from.
+- **New Tab page:** Sidecar replaces Chrome's New Tab page with a plain blank one, so the bookmarks bar doesn't pop in and out every time you press `⌘T`. The cursor still goes to the address bar. The first time, Chrome asks whether to keep the change; click **Keep it**. You lose Chrome's own New Tab page (Google search box and shortcut tiles).
 - **Tab groups:** each space also appears as a tab group in Chrome's top tab strip. The current space's group is expanded and the others are collapsed, which keeps the strip tidy. If you click a tab from another space in the strip, the sidebar switches to that space. You can turn this off in Settings.
 - **Pinned tabs** keep their "home" URL. If a pinned tab has navigated somewhere else and you want the new page to be its home, right-click → *Set pinned URL to current page*. To type a home URL yourself, right-click → *Edit pinned URL…* (*Edit URL…* on favorites). If the tab is open, it goes to the new URL.
 - **Restarting Chrome:** with **Continue where you left off** set (see [Before you install](#before-you-install)), Sidecar matches restored tabs back to their spaces and pinned entries. Unpinned tabs that weren't restored stay listed, dimmed, and reopen when you click them.
@@ -136,4 +137,5 @@ So instead of "assign this space to the Work profile", you put your work spaces 
 | `background.js` | Service worker: owns all state, tab events, space switching, tab groups, auto-archive, sync |
 | `sidepanel.html` / `.css` / `.js` | The sidebar UI |
 | `shared.js` | Helpers shared by both: colors, layout normalization, tree helpers, title compaction |
+| `newtab.html` | Blank New Tab page |
 | `icons/` | Toolbar and extension icons |
