@@ -55,8 +55,12 @@ function normalizeRuntime(r = {}) {
   };
 }
 
+// Page titles are left out: they change constantly (unread counts and the like),
+// and giving each change a new revision made every computer's layout look newest,
+// so it overwrote edits from other computers. Titles still save locally and ride
+// along with the next real change.
 function layoutKey(layout) {
-  return JSON.stringify({ ...layout, rev: 0 });
+  return JSON.stringify(layout, (k, v) => (k === 'rev' || k === 'title' ? undefined : v));
 }
 
 async function load() {
@@ -64,10 +68,12 @@ async function load() {
   const got = await chrome.storage.local.get(['layout', 'runtime']);
   const s = { layout: normalizeLayout(got.layout), runtime: normalizeRuntime(got.runtime) };
   let remote = null;
+  let remoteUnreadable = false;
   try {
     remote = await readSyncLayout();
   } catch (e) {
     console.warn('[sidecar] could not read synced layout', e);
+    remoteUnreadable = true;
   }
   if (remote && remote.rev > s.layout.rev) s.layout = normalizeLayout(remote);
   else if (!got.layout && !remote) s.layout.rev = 1;
@@ -83,7 +89,9 @@ async function load() {
   }
   pruneRuntime(s);
   cache = s;
-  if (!remote || remote.rev < s.layout.rev) schedulePush();
+  // An unreadable remote may be a newer layout still arriving: don't push over it.
+  if (remoteUnreadable) schedulePull();
+  else if (!remote || remote.rev < s.layout.rev) schedulePush();
   ensureAlarm();
   scheduleAllGroups();
   if (s.runtime.bookmarks.enabled) scheduleBookmarks();
@@ -443,6 +451,12 @@ function schedulePush(delay = 3000) {
 async function pushSync(s) {
   const sync = s.runtime.sync;
   try {
+    // Another computer's newer layout may have landed before we pulled it.
+    const remote = await readSyncLayout().catch(() => null);
+    if (remote && remote.rev > s.layout.rev) {
+      applyRemoteLayout(s, remote);
+      return;
+    }
     const data = await gzipB64(JSON.stringify(s.layout));
     const items = {};
     let n = 0;
@@ -467,8 +481,10 @@ function applyRemoteLayout(s, remote) {
   if (s.runtime.bookmarks.enabled) scheduleBookmarks();
 }
 
+let pullTimer = null;
 function schedulePull(attempt = 0) {
-  setTimeout(() => mutate(async s => {
+  clearTimeout(pullTimer);
+  pullTimer = setTimeout(() => mutate(async s => {
     let remote;
     try {
       remote = await readSyncLayout();
@@ -477,6 +493,7 @@ function schedulePull(attempt = 0) {
       return;
     }
     if (remote && remote.rev > s.layout.rev) applyRemoteLayout(s, remote);
+    else if (!remote || remote.rev < s.layout.rev) schedulePush();
   }), 1500);
 }
 
@@ -1048,7 +1065,8 @@ chrome.windows.onRemoved.addListener(windowId => mutate(async s => {
 }));
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && changes[META_KEY]) schedulePull();
+  // Chunks can arrive after the meta item, so any of them restarts the pull.
+  if (area === 'sync' && Object.keys(changes).some(k => k === META_KEY || k.startsWith(CHUNK_PREFIX))) schedulePull();
 });
 
 // ---------------------------------------------------------------------------
