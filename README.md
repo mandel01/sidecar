@@ -95,16 +95,19 @@ Sidecar/
 
 | Action | Default |
 |---|---|
-| New tab in the current space | `⌘T` / `Ctrl+T` (built into Chrome) |
+| New tab in the current space | `⌘T` / `Ctrl+T` (built into Chrome, unless you give it to the command bar) |
 | Open the sidebar | `Alt+Shift+S` (`⌥⇧S` on Mac) |
 | Next / previous space | `Alt+Shift+→` / `Alt+Shift+←` |
 | Pin / unpin the current tab | `⌘.` on Mac, `Alt+Shift+D` elsewhere |
 | Add / remove the current tab from Favorites | (not set) |
 | Switch to a recent tab | (not set; `⌘E` recommended) |
+| Command bar | (not set; `⌘T` recommended) |
 
 To change any of these, go to `chrome://extensions/shortcuts`, or Settings → *Edit shortcuts…*. On a Mac, `Alt` is `⌥ Option`.
 
 **Switching between recent tabs** works like `⌘Tab`. First set *Switch to a recent tab* to `⌘E` in `chrome://extensions/shortcuts` on each computer. Then hold `⌘` and press `E` to see your open tabs, most recently used first. Press `E` again to move down the list, and let go of `⌘` to switch.
+
+**The command bar** is like Arc's `⌘T`. Set *Command bar* to `⌘T` in `chrome://extensions/shortcuts` on each computer, then press it to open a box at the top of the window. Type an address to go there, or words to search (both open in a new tab), find an open or pinned tab, or run a command on the current tab: Copy Current URL, Duplicate, Pin, Rename, Move Tab to a space, Split View, Zoom, Reopen Last Closed Tab, and more. Use `↑`/`↓` to choose and `Enter` to run; `Esc` closes it. If you'd rather keep `⌘T` for Chrome's plain new tab, give the command bar another shortcut, or leave it unset.
 
 **Recommended on a Mac:** set *Open the sidebar* to `⌘S`, which is closer to Arc's sidebar toggle. Chrome won't let an extension claim one of its own shortcuts by default (`⌘S` is Save Page), so you have to set it by hand in `chrome://extensions/shortcuts`. Do this on each computer, and again whenever you remove and reinstall Sidecar.
 
@@ -158,5 +161,6 @@ So instead of "assign this space to the Work profile", you put your work spaces 
 | `shared.js` | Helpers shared by both: colors, layout normalization, tree helpers, title compaction |
 | `newtab.html` | Blank New Tab page |
 | `switcher.html` / `.css` / `.js` | Recent-tab switcher window (`⌘E`) |
+| `commandbar.html` / `.css` / `.js` | Command bar window (`⌘T` recommended) |
 | `icons/` | Toolbar and extension icons |
 | `docs/` | Images used in this README (not loaded by Chrome) |

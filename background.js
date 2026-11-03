@@ -1070,10 +1070,25 @@ const MRU_LIMIT = 300;
 const SWITCHER_URL = 'switcher.html';
 const SWITCHER_ROW = 36;   // keep in step with switcher.css
 const SWITCHER_ROWS = 12;  // rows shown before the list scrolls
+const COMMAND_BAR_URL = 'commandbar.html';
 let switcherWindowId = null;
+let commandBarWindowId = null;
 let lastNormalWindow = null; // last focused window with a Sidecar tab in it
 
-const isSwitcherTab = tab => tab.windowId === switcherWindowId || tabUrl(tab).startsWith(chrome.runtime.getURL(SWITCHER_URL));
+// The switcher and command bar are Sidecar's own popup windows, not tabs to manage.
+const isPopupTab = tab => tab.windowId === switcherWindowId || tab.windowId === commandBarWindowId ||
+  [SWITCHER_URL, COMMAND_BAR_URL].some(p => tabUrl(tab).startsWith(chrome.runtime.getURL(p)));
+
+// A popup window centred near the top of the window it was opened from.
+async function popupProps(url, windowId, width, height) {
+  const props = { url, type: 'popup', focused: true, width, height };
+  const base = await chrome.windows.get(windowId).catch(() => null);
+  if (base && base.left != null) {
+    props.left = Math.round(base.left + (base.width - width) / 2);
+    props.top = Math.round(base.top + (base.height - height) / 3);
+  }
+  return props;
+}
 
 function touchMru(s, tabId) {
   if (!recordForTab(s, tabId) && !entryIdForTab(s, tabId)) return; // not a tab in a normal window
@@ -1089,15 +1104,8 @@ async function openSwitcher(windowId) {
     switcherWindowId = null;
   }
   const count = (await chrome.tabs.query({ windowType: 'normal' })).filter(t => !isNewTabUrl(tabUrl(t))).length;
-  const width = 480;
   const height = Math.min(Math.max(count, 2), SWITCHER_ROWS) * SWITCHER_ROW + 16 + 28; // rows + padding + title bar
-  const props = { url: SWITCHER_URL, type: 'popup', focused: true, width, height };
-  const base = await chrome.windows.get(windowId).catch(() => null);
-  if (base && base.left != null) {
-    props.left = Math.round(base.left + (base.width - width) / 2);
-    props.top = Math.round(base.top + (base.height - height) / 3);
-  }
-  switcherWindowId = (await chrome.windows.create(props)).id;
+  switcherWindowId = (await chrome.windows.create(await popupProps(SWITCHER_URL, windowId, 480, height))).id;
 }
 
 async function closeSwitcher() {
@@ -1132,6 +1140,144 @@ async function switcherList(s) {
       current: id === current,
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Command bar, like Arc's: the "command-bar" shortcut (⌘T recommended) opens a
+// small window to type a URL or search, find a tab, or run a command on the
+// current tab. commandbar.js lists the commands; runBarAction carries them out.
+
+const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
+
+async function openCommandBar(windowId) {
+  if (commandBarWindowId != null) return closeCommandBar(); // the shortcut again closes it
+  const url = `${COMMAND_BAR_URL}?window=${windowId}`;
+  commandBarWindowId = (await chrome.windows.create(await popupProps(url, windowId, 600, 470))).id;
+}
+
+async function closeCommandBar(id = commandBarWindowId) {
+  if (id === commandBarWindowId) commandBarWindowId = null;
+  if (id != null) await chrome.windows.remove(id).catch(() => {});
+}
+
+// The tab a command acts on, and how Sidecar knows it.
+async function barTarget(s, windowId) {
+  const [tab] = await chrome.tabs.query({ windowId, active: true }).catch(() => []);
+  if (!tab) return {};
+  const rec = recordForTab(s, tab.id);
+  const eid = entryIdForTab(s, tab.id);
+  const fav = !!eid && s.layout.favorites.some(f => f.id === eid);
+  const split = splitOfTab(s, tab.id);
+  // As move() names it.
+  const item = split ? { kind: 'split', id: split.id } : rec ? { kind: 'tab', id: rec.id } : eid ? { kind: fav ? 'fav' : 'pinned', id: eid } : null;
+  return { tab, rec, eid, fav, split, item };
+}
+
+async function commandBarData(s, windowId) {
+  const { tab, eid, fav, split, item } = await barTarget(s, windowId);
+  const url = tab ? tabUrl(tab) : '';
+  const tabs = (await switcherList(s)).filter(t => t.tabId !== tab?.id);
+  // Pinned tabs and favorites that aren't open can be found and opened too.
+  const entries = [];
+  const addEntry = (n, space) => {
+    if (n.type !== 'tab' || s.runtime.bindings[n.id]) return;
+    entries.push({ id: n.id, title: n.customTitle || n.title || hostOf(n.url), url: n.url, space: space ? space.icon || space.name : '★', color: space?.color });
+  };
+  for (const f of s.layout.favorites) addEntry(f, null);
+  for (const sp of s.layout.spaces) walk(sp.pinned, n => addEntry(n, sp));
+  const splitWith = !split && !fav && item && canSplit()
+    ? tabs.find(t => !splitOfTab(s, t.tabId) && (recordForTab(s, t.tabId) || findInSpaces(s, entryIdForTab(s, t.tabId))))
+    : null;
+  const entry = eid && !fav ? findEntry(s, eid)?.entry : null;
+  return {
+    ctx: {
+      page: !!tab && !isNewTabUrl(url),
+      url,
+      title: tab?.title || '',
+      inSidecar: !!item,
+      pinned: !!entry || split?.kind === 'pinned',
+      favorite: fav,
+      unpinned: item?.kind === 'tab' || split?.kind === 'tab',
+      split: !!split,
+      movedFromPin: !!entry && !sameUrl(entry.url, url),
+      splitWith: splitWith ? { tabId: splitWith.tabId, title: splitWith.title } : null,
+      spaceId: getWindowSpace(s, windowId),
+    },
+    spaces: s.layout.spaces.map(sp => ({ id: sp.id, name: sp.name, icon: sp.icon, color: sp.color })),
+    tabs,
+    entries,
+  };
+}
+
+async function runBarAction(s, windowId, action, arg) {
+  await chrome.windows.update(windowId, { focused: true }).catch(() => {});
+  const { tab, rec, eid, fav, split, item } = await barTarget(s, windowId);
+  const id = tab?.id;
+  // A typed URL or search opens in a new tab, or in this one if it's a blank New Tab.
+  const blankTab = async () => (tab && isNewTabUrl(tabUrl(tab)) ? tab : chrome.tabs.create({ windowId, active: true }));
+  switch (action) {
+    case 'open-url': return chrome.tabs.update((await blankTab()).id, { url: arg });
+    case 'search': return chrome.search.query({ text: arg, tabId: (await blankTab()).id });
+    case 'focus-tab': return focusTab(arg);
+    case 'open-entry': return activate(s, { kind: 'pinned', id: arg, windowId });
+    case 'open-page': return chrome.tabs.create({ windowId, url: arg });
+    case 'reopen-closed': return chrome.sessions.restore();
+    case 'next-space': return cycleSpace(s, windowId, 1);
+    case 'prev-space': return cycleSpace(s, windowId, -1);
+    case 'focus-space': return switchSpace(s, windowId, arg);
+    case 'new-space': return handlers.createSpace(s, { windowId, name: arg });
+    case 'clear-unpinned': return handlers.clearSpace(s, { spaceId: getWindowSpace(s, windowId) });
+    case 'new-window': return chrome.windows.create({});
+    case 'new-incognito': return chrome.windows.create({ incognito: true });
+    case 'minimize-window': return chrome.windows.update(windowId, { state: 'minimized' });
+    case 'close-window': return chrome.windows.remove(windowId);
+    case 'fullscreen': {
+      const w = await chrome.windows.get(windowId);
+      return chrome.windows.update(windowId, { state: w.state === 'fullscreen' ? 'normal' : 'fullscreen' });
+    }
+  }
+  if (id == null) return;
+  switch (action) {
+    case 'reload': return chrome.tabs.reload(id);
+    case 'back': return chrome.tabs.goBack(id).catch(() => {});
+    case 'forward': return chrome.tabs.goForward(id).catch(() => {});
+    case 'duplicate': return chrome.tabs.duplicate(id);
+    case 'close-tab': return closeTabs(s, [id]);
+    case 'zoom-in':
+    case 'zoom-out': {
+      const z = await chrome.tabs.getZoom(id);
+      const next = action === 'zoom-in' ? ZOOM_STEPS.find(v => v > z + 0.001) : ZOOM_STEPS.findLast(v => v < z - 0.001);
+      return next && chrome.tabs.setZoom(id, next);
+    }
+    case 'zoom-reset': return chrome.tabs.setZoom(id, 0);
+    case 'toggle-pin':
+    case 'toggle-favorite': return runCommand(s, action, tab);
+    case 'archive-tab':
+      if (rec) return archiveRecords(s, rec.splitId ? splitRecords(s, rec.splitId) : [rec]);
+      return;
+    case 'rename':
+      if (rec) return handlers.rename(s, { kind: 'tab', id: rec.id, name: arg });
+      if (eid) return handlers.rename(s, { kind: 'pinned', id: eid, name: arg });
+      return;
+    case 'reset-pin': {
+      const e = eid && !fav && findEntry(s, eid);
+      return e && chrome.tabs.update(id, { url: e.entry.url });
+    }
+    case 'replace-pin': return eid && !fav && handlers.setEntryUrl(s, { id: eid });
+    case 'move-to-space':
+      if (!item) return;
+      await move(s, item, { zone: 'space', spaceId: arg });
+      return switchSpace(s, windowId, arg); // follow the tab there
+    case 'split-with': {
+      const otherRec = recordForTab(s, arg);
+      const otherEid = entryIdForTab(s, arg);
+      const other = otherRec ? { kind: 'tab', id: otherRec.id } : otherEid ? { kind: 'pinned', id: otherEid } : null;
+      if (!other || !item || item.kind === 'split' || item.kind === 'fav') return;
+      return makeSplit(s, other, { ...item, side: 'right' }, windowId);
+    }
+    case 'unsplit': return split && separateSplit(s, split.id);
+    case 'swap-split': return split && swapSplit(s, split.id);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1216,6 +1362,13 @@ const handlers = {
     await focusTab(tabId);
   },
   switcherClose: () => closeSwitcher(),
+
+  commandBarData: (s, { windowId }) => commandBarData(s, windowId),
+  commandBarRun: async (s, { windowId, action, arg }, sender) => {
+    await closeCommandBar(sender.tab?.windowId);
+    return runBarAction(s, windowId, action, arg);
+  },
+  commandBarClose: (s, m, sender) => closeCommandBar(sender.tab?.windowId),
 
   pinTab: (s, { id }) => {
     const r = s.runtime.tabs.find(x => x.id === id);
@@ -1332,7 +1485,7 @@ const handlers = {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const handler = handlers[msg && msg.type];
   if (!handler) return false;
-  mutate(s => handler(s, msg)).then(
+  mutate(s => handler(s, msg, sender)).then(
     result => sendResponse({ ok: true, result }),
     err => sendResponse({ ok: false, error: String(err && err.message || err) }),
   );
@@ -1343,7 +1496,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // Chrome events
 
 chrome.tabs.onCreated.addListener(tab => mutate(async s => {
-  if (isSwitcherTab(tab)) return;
+  if (isPopupTab(tab)) return;
   if (recordForTab(s, tab.id) || entryIdForTab(s, tab.id)) return;
   if (Date.now() < reconcileUntil && tryClaim(s, tab)) return;
   let spaceId = null;
@@ -1462,6 +1615,7 @@ chrome.windows.onFocusChanged.addListener(windowId => {
 
 chrome.windows.onRemoved.addListener(windowId => {
   if (windowId === switcherWindowId) switcherWindowId = null;
+  if (windowId === commandBarWindowId) commandBarWindowId = null;
   mutate(s => forgetWindow(s, windowId));
 });
 
@@ -1523,6 +1677,7 @@ chrome.commands.onCommand.addListener((command, tab) => {
 async function runCommand(s, command, tab) {
   const windowId = tab ? tab.windowId : (await chrome.windows.getLastFocused()).id;
   if (command === 'switch-tab') return openSwitcher(windowId);
+  if (command === 'command-bar') return openCommandBar(windowId);
   const [active] = tab ? [tab] : await chrome.tabs.query({ windowId, active: true });
   if (command === 'next-space') return cycleSpace(s, windowId, 1);
   if (command === 'prev-space') return cycleSpace(s, windowId, -1);

@@ -696,7 +696,7 @@ function openSettingsDialog() {
       </div>
 
       <h3>Keyboard</h3>
-      <p>⌘T / Ctrl+T opens a new tab in the current space. Space switching, pin and favorite shortcuts can be changed on Chrome’s shortcuts page. Set “Switch to a recent tab” there too (⌘E recommended on a Mac) to flip between recent tabs like ⌘Tab.</p>
+      <p>⌘T / Ctrl+T opens a new tab in the current space, unless you give it to the command bar. Space switching, pin and favorite shortcuts can be changed on Chrome’s shortcuts page. Set “Switch to a recent tab” there too (⌘E recommended on a Mac) to flip between recent tabs like ⌘Tab, and “Command bar” (⌘T recommended) for an Arc-style command bar.</p>
       <div class="actions" style="margin-top:6px">
         <button type="button" class="btn" data-act="shortcuts">Edit shortcuts…</button>
       </div>
