@@ -117,6 +117,16 @@ In the sidebar: **click** a tab to open it, **middle-click** to close it, **doub
 - **Multiple windows:** each window can be on a different space.
 - **Split views made in Chrome** (for example right-click a tab → split view) show up as a split in the sidebar when both tabs are in the same section of the same space. A pinned tab split with a tab it opened (say, *Open link in split view*) becomes a pinned split; drag it below the line if you don't want to keep it. A pinned tab split with any other unpinned tab stays as two separate rows.
 
+## Floating video player (Arc's miniplayer)
+
+Arc moved a playing video into a floating miniplayer on its own when you switched tabs. Sidecar can't do that, but Chrome's picture-in-picture comes close. You start it yourself, once for each video you want to float:
+
+1. Play a video or audio file with sound in Chrome.
+2. Click the **Media controls** button <img src="docs/media-controls.svg" height="18" alt="Media controls button"> in Chrome's toolbar, at the top right. It only appears while something is playing.
+3. In the small media panel that opens, click the **Picture-in-picture** button <img src="docs/picture-in-picture.svg" height="18" alt="Picture-in-picture button">.
+
+The video moves to a small window that stays in front of all your other windows, including other apps on a Mac, while you switch tabs and spaces. Drag it to move it, and drag a corner to resize it. To put the video back in its tab, use the back-to-tab button in the floating window; to stop it, close the window. (Note that your icons might look slightly different from the ones drawn here.)
+
 ## Profiles (Arc's separate logins)
 
 Chrome extensions can't keep separate cookies or logins per space, so the closest match to Arc profiles is **Chrome profiles**, which is what you planned:
@@ -145,3 +155,4 @@ So instead of "assign this space to the Work profile", you put your work spaces 
 | `shared.js` | Helpers shared by both: colors, layout normalization, tree helpers, title compaction |
 | `newtab.html` | Blank New Tab page |
 | `icons/` | Toolbar and extension icons |
+| `docs/` | Images used in this README (not loaded by Chrome) |
