@@ -112,6 +112,16 @@ export function walk(nodes, fn) {
   }
 }
 
+export const FALLBACK_ICON = 'data:image/svg+xml,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" fill="none" stroke="#8b8f97" stroke-width="1.3"/><path d="M1.5 8h13M8 1.5c2 2 2.6 4 2.6 6.5S10 12.5 8 14.5M8 1.5C6 3.5 5.4 5.5 5.4 8S6 12.5 8 14.5" fill="none" stroke="#8b8f97" stroke-width="1.1"/></svg>');
+
+// For extension pages only (the side panel and the tab switcher).
+export function faviconFor(url, live) {
+  if (live && live.favIconUrl && /^(https?|data):/.test(live.favIconUrl)) return live.favIconUrl;
+  if (!url) return FALLBACK_ICON;
+  return chrome.runtime.getURL(`/_favicon/?pageUrl=${encodeURIComponent(url)}&size=32`);
+}
+
 export function hostOf(url) {
   try {
     return new URL(url).hostname.replace(/^www\./, '');

@@ -11,7 +11,7 @@
 // side-panel requests never interleave. The side panel only reads storage and
 // sends messages; it never writes state itself.
 
-import { uid, findNode, removeNode, walk, normalizeLayout, sameUrl, tidySplits } from './shared.js';
+import { uid, findNode, removeNode, walk, normalizeLayout, sameUrl, tidySplits, compactTitle, hostOf } from './shared.js';
 
 // Storage keys keep the old "vtabs" name: renaming them would orphan existing synced layouts.
 const META_KEY = 'vtabs_meta';
@@ -47,6 +47,7 @@ function normalizeRuntime(r = {}) {
     windowSpace: r.windowSpace || {},    // windowId -> spaceId
     groups: r.groups || {},              // "windowId:spaceId" -> tab group id
     activeTab: r.activeTab || {},        // windowId -> active tab id
+    mru: Array.isArray(r.mru) ? r.mru : [], // tab ids, most recently used first (for the tab switcher)
     archived: Array.isArray(r.archived) ? r.archived : [],
     stale: Array.isArray(r.stale) ? r.stale : [], // bindings waiting to be re-matched after restart
     lastSpaceId: r.lastSpaceId || null,
@@ -1061,6 +1062,75 @@ function adoptSplit(s, leftTab, rightTab) {
 }
 
 // ---------------------------------------------------------------------------
+// Tab switcher, like ⌘Tab for tabs. The "switch-tab" shortcut (⌘E recommended) opens a
+// small window listing open tabs, most recently used first; pressing it again
+// while the window is up moves down the list. switcher.js does the rest.
+
+const MRU_LIMIT = 300;
+const SWITCHER_URL = 'switcher.html';
+const SWITCHER_ROW = 36;   // keep in step with switcher.css
+const SWITCHER_ROWS = 12;  // rows shown before the list scrolls
+let switcherWindowId = null;
+let lastNormalWindow = null; // last focused window with a Sidecar tab in it
+
+const isSwitcherTab = tab => tab.windowId === switcherWindowId || tabUrl(tab).startsWith(chrome.runtime.getURL(SWITCHER_URL));
+
+function touchMru(s, tabId) {
+  if (!recordForTab(s, tabId) && !entryIdForTab(s, tabId)) return; // not a tab in a normal window
+  s.runtime.mru = [tabId, ...s.runtime.mru.filter(id => id !== tabId)].slice(0, MRU_LIMIT);
+}
+
+async function openSwitcher(windowId) {
+  if (switcherWindowId != null) {
+    if (await chrome.windows.get(switcherWindowId).catch(() => null)) {
+      chrome.runtime.sendMessage({ type: 'switcherNext' }).catch(() => {});
+      return;
+    }
+    switcherWindowId = null;
+  }
+  const count = (await chrome.tabs.query({ windowType: 'normal' })).length;
+  const width = 480;
+  const height = Math.min(Math.max(count, 2), SWITCHER_ROWS) * SWITCHER_ROW + 16 + 28; // rows + padding + title bar
+  const props = { url: SWITCHER_URL, type: 'popup', focused: true, width, height };
+  const base = await chrome.windows.get(windowId).catch(() => null);
+  if (base && base.left != null) {
+    props.left = Math.round(base.left + (base.width - width) / 2);
+    props.top = Math.round(base.top + (base.height - height) / 3);
+  }
+  switcherWindowId = (await chrome.windows.create(props)).id;
+}
+
+async function closeSwitcher() {
+  const id = switcherWindowId;
+  switcherWindowId = null;
+  if (id != null) await chrome.windows.remove(id).catch(() => {});
+}
+
+// Open tabs in switcher order, named as the sidebar names them.
+async function switcherList(s) {
+  const open = await chrome.tabs.query({ windowType: 'normal' });
+  const byId = new Map(open.map(t => [t.id, t]));
+  // Tabs never used since Sidecar started go last, in tab strip order.
+  s.runtime.mru = [...new Set([...s.runtime.mru.filter(id => byId.has(id)), ...open.map(t => t.id)])].slice(0, MRU_LIMIT);
+  return s.runtime.mru.map(id => {
+    const t = byId.get(id);
+    const url = tabUrl(t);
+    const eid = entryIdForTab(s, t.id);
+    const custom = recordForTab(s, t.id)?.customTitle || (eid && findEntry(s, eid)?.entry.customTitle) || '';
+    const spaceId = spaceOfTab(s, t.id);
+    const space = spaceId ? spaceById(s, spaceId) : null;
+    return {
+      tabId: t.id,
+      title: custom || (s.layout.settings.compactTitles ? compactTitle(t.title, url) : t.title || hostOf(url) || 'New Tab'),
+      url,
+      favIconUrl: t.favIconUrl || '',
+      space: spaceId === null ? '★' : space ? space.icon || space.name : '',
+      color: space ? space.color : null,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Messages from the side panel
 
 const handlers = {
@@ -1135,6 +1205,13 @@ const handlers = {
   split: (s, { item, target, windowId }) => makeSplit(s, item, target, windowId),
   unsplit: (s, { id }) => separateSplit(s, id),
   swapSplit: (s, { id }) => swapSplit(s, id),
+
+  switcherList: s => switcherList(s),
+  switcherCommit: async (s, { tabId }) => {
+    await closeSwitcher();
+    await focusTab(tabId);
+  },
+  switcherClose: () => closeSwitcher(),
 
   pinTab: (s, { id }) => {
     const r = s.runtime.tabs.find(x => x.id === id);
@@ -1262,6 +1339,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // Chrome events
 
 chrome.tabs.onCreated.addListener(tab => mutate(async s => {
+  if (isSwitcherTab(tab)) return;
   if (recordForTab(s, tab.id) || entryIdForTab(s, tab.id)) return;
   if (Date.now() < reconcileUntil && tryClaim(s, tab)) return;
   let spaceId = null;
@@ -1288,6 +1366,7 @@ chrome.tabs.onRemoved.addListener((tabId, info) => {
   for (const [id, t] of recentlyRemoved) if (now - t > 5000) recentlyRemoved.delete(id);
   recentlyRemoved.set(tabId, now);
   mutate(async s => {
+    s.runtime.mru = s.runtime.mru.filter(id => id !== tabId);
     const eid = entryIdForTab(s, tabId);
     if (eid) delete s.runtime.bindings[eid];
     const rec = recordForTab(s, tabId);
@@ -1324,6 +1403,7 @@ chrome.tabs.onActivated.addListener(({ tabId, windowId }) => mutate(async s => {
   const now = Date.now();
   const prev = rt.activeTab[windowId];
   rt.activeTab[windowId] = tabId;
+  touchMru(s, tabId);
 
   let spaceId;
   const rec = recordForTab(s, tabId);
@@ -1365,14 +1445,27 @@ chrome.windows.onFocusChanged.addListener(windowId => {
   if (windowId < 0) return;
   mutate(async s => {
     if (s.runtime.windowSpace[windowId]) s.runtime.lastSpaceId = s.runtime.windowSpace[windowId];
+    // Going to another window makes its tab the most recent one. Coming back
+    // from the switcher (or any popup) to the same window doesn't count.
+    if (windowId === lastNormalWindow) return;
+    const [active] = await chrome.tabs.query({ windowId, active: true });
+    if (active && (recordForTab(s, active.id) || entryIdForTab(s, active.id))) {
+      lastNormalWindow = windowId;
+      touchMru(s, active.id);
+    }
   });
 });
 
-chrome.windows.onRemoved.addListener(windowId => mutate(async s => {
+chrome.windows.onRemoved.addListener(windowId => {
+  if (windowId === switcherWindowId) switcherWindowId = null;
+  mutate(s => forgetWindow(s, windowId));
+});
+
+async function forgetWindow(s, windowId) {
   delete s.runtime.windowSpace[windowId];
   delete s.runtime.activeTab[windowId];
   for (const key of Object.keys(s.runtime.groups)) if (key.startsWith(`${windowId}:`)) delete s.runtime.groups[key];
-}));
+}
 
 chrome.storage.onChanged.addListener((changes, area) => {
   // Chunks can arrive after the meta item, so any of them restarts the pull.
@@ -1413,8 +1506,19 @@ chrome.alarms.onAlarm.addListener(alarm => {
 // ---------------------------------------------------------------------------
 // Keyboard shortcuts (chrome://extensions/shortcuts)
 
-chrome.commands.onCommand.addListener((command, tab) => mutate(async s => {
+chrome.commands.onCommand.addListener((command, tab) => {
+  // The switcher is already open: pass the press straight on, without waiting
+  // behind other state changes, so each press moves the list right away.
+  if (command === 'switch-tab' && switcherWindowId != null) {
+    chrome.runtime.sendMessage({ type: 'switcherNext' }).catch(() => {});
+    return;
+  }
+  mutate(s => runCommand(s, command, tab));
+});
+
+async function runCommand(s, command, tab) {
   const windowId = tab ? tab.windowId : (await chrome.windows.getLastFocused()).id;
+  if (command === 'switch-tab') return openSwitcher(windowId);
   const [active] = tab ? [tab] : await chrome.tabs.query({ windowId, active: true });
   if (command === 'next-space') return cycleSpace(s, windowId, 1);
   if (command === 'prev-space') return cycleSpace(s, windowId, -1);
@@ -1439,7 +1543,7 @@ chrome.commands.onCommand.addListener((command, tab) => mutate(async s => {
     if (eid && s.layout.favorites.some(f => f.id === eid)) return handlers.unfavorite(s, { id: eid, windowId });
     if (eid) return move(s, { kind: 'pinned', id: eid }, { zone: 'favorites', position: 'end' });
   }
-}));
+}
 
 // ---------------------------------------------------------------------------
 // Startup

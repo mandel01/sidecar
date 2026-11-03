@@ -100,8 +100,11 @@ Sidecar/
 | Next / previous space | `Alt+Shift+→` / `Alt+Shift+←` |
 | Pin / unpin the current tab | `Alt+Shift+D` |
 | Add / remove the current tab from Favorites | (not set) |
+| Switch to a recent tab | (not set; `⌘E` recommended) |
 
 To change any of these, go to `chrome://extensions/shortcuts`, or Settings → *Edit shortcuts…*. On a Mac, `Alt` is `⌥ Option`.
+
+**Switching between recent tabs** works like `⌘Tab`. First set *Switch to a recent tab* to `⌘E` in `chrome://extensions/shortcuts` on each computer. Then hold `⌘` and press `E` to see your open tabs, most recently used first. Press `E` again to move down the list, and let go of `⌘` to switch.
 
 **Recommended on a Mac:** set *Open the sidebar* to `⌘S`, which is closer to Arc's sidebar toggle. Chrome won't let an extension claim one of its own shortcuts by default (`⌘S` is Save Page), so you have to set it by hand in `chrome://extensions/shortcuts`. Do this on each computer, and again whenever you remove and reinstall Sidecar.
 
@@ -154,5 +157,6 @@ So instead of "assign this space to the Work profile", you put your work spaces 
 | `sidepanel.html` / `.css` / `.js` | The sidebar UI |
 | `shared.js` | Helpers shared by both: colors, layout normalization, tree helpers, title compaction |
 | `newtab.html` | Blank New Tab page |
+| `switcher.html` / `.css` / `.js` | Recent-tab switcher window (`⌘E`) |
 | `icons/` | Toolbar and extension icons |
 | `docs/` | Images used in this README (not loaded by Chrome) |

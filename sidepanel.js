@@ -1,7 +1,7 @@
 // Side panel UI. Reads state from chrome.storage.local, asks the background
 // worker to make every change, and re-renders whenever storage or tabs change.
 
-import { COLOR_HEX, GROUP_COLORS, ICON_PRESETS, compactTitle, hostOf } from './shared.js';
+import { COLOR_HEX, GROUP_COLORS, ICON_PRESETS, FALLBACK_ICON, compactTitle, hostOf, faviconFor } from './shared.js';
 
 const $ = id => document.getElementById(id);
 const els = {
@@ -17,8 +17,6 @@ const els = {
   dragChip: $('drag-chip'),
 };
 
-const FALLBACK_ICON = 'data:image/svg+xml,' + encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" fill="none" stroke="#8b8f97" stroke-width="1.3"/><path d="M1.5 8h13M8 1.5c2 2 2.6 4 2.6 6.5S10 12.5 8 14.5M8 1.5C6 3.5 5.4 5.5 5.4 8S6 12.5 8 14.5" fill="none" stroke="#8b8f97" stroke-width="1.1"/></svg>');
 const FOLDER_CLOSED_PATH = '<path d="M1.5 4.5v8a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H8L6.5 3.5h-4a1 1 0 0 0-1 1Z"/>';
 const FOLDER_SVG = {
   closed: `<svg class="folder-icon" viewBox="0 0 16 16">${FOLDER_CLOSED_PATH}</svg>`,
@@ -79,12 +77,6 @@ function displayTitle(custom, live, storedTitle, url) {
   const u = (live && live.url) || url;
   if (layout.settings.compactTitles) return compactTitle(title, u);
   return title || hostOf(u) || 'New Tab';
-}
-
-function faviconFor(url, live) {
-  if (live && live.favIconUrl && /^(https?|data):/.test(live.favIconUrl)) return live.favIconUrl;
-  if (!url) return FALLBACK_ICON;
-  return chrome.runtime.getURL(`/_favicon/?pageUrl=${encodeURIComponent(url)}&size=32`);
 }
 
 const isActive = live => !!live && live.active && live.windowId === windowId;
@@ -704,7 +696,7 @@ function openSettingsDialog() {
       </div>
 
       <h3>Keyboard</h3>
-      <p>⌘T / Ctrl+T opens a new tab in the current space. Space switching, pin and favorite shortcuts can be changed on Chrome’s shortcuts page.</p>
+      <p>⌘T / Ctrl+T opens a new tab in the current space. Space switching, pin and favorite shortcuts can be changed on Chrome’s shortcuts page. Set “Switch to a recent tab” there too (⌘E recommended on a Mac) to flip between recent tabs like ⌘Tab.</p>
       <div class="actions" style="margin-top:6px">
         <button type="button" class="btn" data-act="shortcuts">Edit shortcuts…</button>
       </div>
