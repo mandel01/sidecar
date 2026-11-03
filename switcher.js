@@ -2,6 +2,8 @@
 // Works like ⌘Tab: it opens on the previous tab; keep holding the modifier and
 // press the letter again to go further back (or hold the letter down), ⇧ to go
 // forward, then let go to switch. Enter or a click also switches; Esc cancels.
+// W closes the selected tab and keeps the list up on the rest (⌘W is handled in
+// background.js, as Chrome keeps it for itself).
 // Whatever shortcut is set on chrome://extensions/shortcuts works: any of ⌘, ⌥
 // or Ctrl being let go switches.
 //
@@ -64,6 +66,17 @@ function select(i) {
   if (!row) return;
   row.classList.add('selected');
   row.scrollIntoView({ block: 'nearest' });
+  chrome.runtime.sendMessage({ type: 'switcherSelect', tabId: items[sel].tabId, index: sel }).catch(() => {});
+}
+
+function closeSelected() {
+  const it = items[sel];
+  if (!it || done) return;
+  chrome.runtime.sendMessage({ type: 'switcherCloseTab', tabId: it.tabId });
+  items.splice(sel, 1);
+  list.children[sel].remove();
+  if (!items.length) return finish(null);
+  select(Math.min(sel, items.length - 1));
 }
 
 let earlySteps = 0; // presses that arrived before the list did
@@ -94,6 +107,9 @@ addEventListener('keydown', e => {
     e.preventDefault();
     lastLocalStep = Date.now();
     step(e.shiftKey || e.key === 'ArrowUp' ? -1 : 1, e.repeat);
+  } else if (e.code === 'KeyW') {
+    e.preventDefault();
+    if (loaded && !e.repeat) closeSelected();
   } else if (e.key === 'Enter') {
     e.preventDefault();
     commit();
@@ -103,7 +119,8 @@ addEventListener('keydown', e => {
 });
 
 addEventListener('keyup', e => { if (MODIFIERS.has(e.key)) commit(); });
-addEventListener('blur', () => finish(null));
+// After a moment, so a ⌘W that closes this window isn't taken for a cancel.
+addEventListener('blur', () => setTimeout(() => finish(null), 100));
 
 // Pressing the shortcut again usually reaches Chrome's shortcut handling rather
 // than this page, so the background passes it on. Ignore it if this page already
@@ -120,7 +137,9 @@ const res = await chrome.runtime.sendMessage({ type: 'switcherList' });
 items = (res && res.ok && res.result) || [];
 // Start on the previous tab: one below the current one, or the top row when
 // the current tab isn't listed (it's a New Tab).
-const start = items[0]?.current && items.length > 1 ? 1 : 0;
+// Reopened after ⌘W, it picks up where it was.
+const at = new URLSearchParams(location.search).get('at');
+const start = at != null ? Math.min(+at, items.length - 1) : items[0]?.current && items.length > 1 ? 1 : 0;
 sel = items.length ? ((start + earlySteps) % items.length + items.length) % items.length : 0;
 loaded = true;
 render();

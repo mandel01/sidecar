@@ -105,7 +105,7 @@ Sidecar/
 
 To change any of these, go to `chrome://extensions/shortcuts`, or Settings → *Edit shortcuts…*. On a Mac, `Alt` is `⌥ Option`.
 
-**Switching between recent tabs** works like `⌘Tab`. First set *Switch to a recent tab* to `⌘E` in `chrome://extensions/shortcuts` on each computer. Then hold `⌘` and press `E` to see your open tabs, most recently used first. Press `E` again to move down the list, and let go of `⌘` to switch.
+**Switching between recent tabs** works like `⌘Tab`. First set *Switch to a recent tab* to `⌘E` in `chrome://extensions/shortcuts` on each computer. Then hold `⌘` and press `E` to see your open tabs, most recently used first. Press `E` again to move down the list, and let go of `⌘` to switch. Press `W` (still holding `⌘`) to close the selected tab and keep going with the rest.
 
 **The command bar** is like Arc's `⌘T`. Set *Command bar* to `⌘T` in `chrome://extensions/shortcuts` on each computer, then press it to open a box at the top of the window. Type an address to go there, or words to search (both open in a new tab), find an open or pinned tab, or run a command on the current tab: Copy Current URL, Duplicate, Pin, Rename, Move Tab to a space, Split View, Zoom, Video Miniplayer (Picture in Picture), Reopen Last Closed Tab, and more. Use `↑`/`↓` to choose and `Enter` to run; `Esc` closes it. If you'd rather keep `⌘T` for Chrome's plain new tab, give the command bar another shortcut, or leave it unset.
 

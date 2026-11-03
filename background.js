@@ -1095,7 +1095,7 @@ function touchMru(s, tabId) {
   s.runtime.mru = [tabId, ...s.runtime.mru.filter(id => id !== tabId)].slice(0, MRU_LIMIT);
 }
 
-async function openSwitcher(windowId) {
+async function openSwitcher(windowId, at) {
   if (switcherWindowId != null) {
     if (await chrome.windows.get(switcherWindowId).catch(() => null)) {
       chrome.runtime.sendMessage({ type: 'switcherNext' }).catch(() => {});
@@ -1105,8 +1105,30 @@ async function openSwitcher(windowId) {
   }
   const count = (await chrome.tabs.query({ windowType: 'normal' })).filter(t => !isNewTabUrl(tabUrl(t))).length;
   const height = Math.min(Math.max(count, 2), SWITCHER_ROWS) * SWITCHER_ROW + 16 + 28; // rows + padding + title bar
-  switcherWindowId = (await chrome.windows.create(await popupProps(SWITCHER_URL, windowId, 480, height))).id;
+  const url = at == null ? SWITCHER_URL : `${SWITCHER_URL}?at=${at}`;
+  switcherWindowId = (await chrome.windows.create(await popupProps(url, windowId, 480, height))).id;
 }
+
+// ⌘W in the switcher closes the selected tab, and the switcher stays up on the
+// rest. Chrome keeps ⌘W for itself, so the page never sees it: Chrome closes the
+// switcher's own tab instead. That's told apart from the switcher closing any
+// other way (Esc, a switch, its close button), which closes the whole window.
+let switcherSel = null; // { tabId, index } of the selected row, as the page reports it
+
+chrome.runtime.onMessage.addListener(msg => {
+  if (msg && msg.type === 'switcherSelect') switcherSel = msg;
+});
+
+chrome.tabs.onRemoved.addListener(async (tabId, { windowId, isWindowClosing }) => {
+  if (windowId !== switcherWindowId || isWindowClosing) return;
+  switcherWindowId = null;
+  const sel = switcherSel;
+  switcherSel = null;
+  const tab = sel && await chrome.tabs.get(sel.tabId).catch(() => null);
+  if (!tab) return;
+  await chrome.tabs.remove(tab.id).catch(() => {});
+  await openSwitcher(tab.windowId, sel.index);
+});
 
 async function closeSwitcher() {
   const id = switcherWindowId;
@@ -1363,6 +1385,7 @@ const handlers = {
     await focusTab(tabId);
   },
   switcherClose: () => closeSwitcher(),
+  switcherCloseTab: (s, { tabId }) => chrome.tabs.remove(tabId).catch(() => {}),
 
   commandBarData: (s, { windowId }) => commandBarData(s, windowId),
   commandBarRun: async (s, { windowId, action, arg }, sender) => {
