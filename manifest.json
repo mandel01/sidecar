@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Sidecar",
   "short_name": "Sidecar",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "Arc-style vertical tabs for Chrome: spaces, pinned tabs, folders, favorites and auto-archiving, synced across computers.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8JuB9m+0VfYnyw8gMsQUhVXe4j3YY8eDB/lxqacPj1MYOxGZPdsPHR7E19qbwvHVOsLOBvKdkDPFMxVDCd8S1cTCon2/hHMOI55L2XTl/pTRy3sp5dbO8MAI9ZB7YWVhx7zEj+ufVPtROldAF3fRzj8wWLmruNDDlXQCeqgCZDaeEV02l61HSedG3tOcrbl6B5E8AtWmk+C6su07GOvHTac0FKXe2mM2GrvVTdj4tQK4ik/4t0VehPgyXrhMMX7F2aZaWvJctdIgrwqGEHbv+8a8pa8Z9VyR/UvB9Kot6yvz2pMY0FfubHM/MPkY3JKAOJZ4z2Ku6dQ1niIeQq1OZwIDAQAB",
   "minimum_chrome_version": "116",

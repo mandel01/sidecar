@@ -1088,7 +1088,7 @@ async function openSwitcher(windowId) {
     }
     switcherWindowId = null;
   }
-  const count = (await chrome.tabs.query({ windowType: 'normal' })).length;
+  const count = (await chrome.tabs.query({ windowType: 'normal' })).filter(t => !isNewTabUrl(tabUrl(t))).length;
   const width = 480;
   const height = Math.min(Math.max(count, 2), SWITCHER_ROWS) * SWITCHER_ROW + 16 + 28; // rows + padding + title bar
   const props = { url: SWITCHER_URL, type: 'popup', focused: true, width, height };
@@ -1112,7 +1112,10 @@ async function switcherList(s) {
   const byId = new Map(open.map(t => [t.id, t]));
   // Tabs never used since Sidecar started go last, in tab strip order.
   s.runtime.mru = [...new Set([...s.runtime.mru.filter(id => byId.has(id)), ...open.map(t => t.id)])].slice(0, MRU_LIMIT);
-  return s.runtime.mru.map(id => {
+  // Blank New Tabs aren't worth switching to. The first entry is the tab you're
+  // on, marked so the switcher can start one below it.
+  const current = s.runtime.mru[0];
+  return s.runtime.mru.filter(id => !isNewTabUrl(tabUrl(byId.get(id)))).map(id => {
     const t = byId.get(id);
     const url = tabUrl(t);
     const eid = entryIdForTab(s, t.id);
@@ -1126,6 +1129,7 @@ async function switcherList(s) {
       favIconUrl: t.favIconUrl || '',
       space: spaceId === null ? '★' : space ? space.icon || space.name : '',
       color: space ? space.color : null,
+      current: id === current,
     };
   });
 }

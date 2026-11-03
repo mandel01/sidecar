@@ -118,7 +118,10 @@ chrome.runtime.onMessage.addListener(msg => {
 
 const res = await chrome.runtime.sendMessage({ type: 'switcherList' });
 items = (res && res.ok && res.result) || [];
-sel = items.length > 1 ? ((1 + earlySteps) % items.length + items.length) % items.length : 0;
+// Start on the previous tab: one below the current one, or the top row when
+// the current tab isn't listed (it's a New Tab).
+const start = items[0]?.current && items.length > 1 ? 1 : 0;
+sel = items.length ? ((start + earlySteps) % items.length + items.length) % items.length : 0;
 loaded = true;
 render();
 if (commitOnLoad) commit();
