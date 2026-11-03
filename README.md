@@ -98,7 +98,7 @@ Sidecar/
 | New tab in the current space | `⌘T` / `Ctrl+T` (built into Chrome) |
 | Open the sidebar | `Alt+Shift+S` (`⌥⇧S` on Mac) |
 | Next / previous space | `Alt+Shift+→` / `Alt+Shift+←` |
-| Pin / unpin the current tab | `Alt+Shift+D` |
+| Pin / unpin the current tab | `⌘.` on Mac, `Alt+Shift+D` elsewhere |
 | Add / remove the current tab from Favorites | (not set) |
 | Switch to a recent tab | (not set; `⌘E` recommended) |
 
