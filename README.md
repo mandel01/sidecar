@@ -166,3 +166,7 @@ So instead of "assign this space to the Work profile", you put your work spaces 
 | `commandbar.html` / `.css` / `.js` | Command bar window (`⌘T` recommended) |
 | `icons/` | Toolbar and extension icons |
 | `docs/` | Images used in this README (not loaded by Chrome) |
+
+## License
+
+[MIT](LICENSE). A personal project, shared as is: no support, and breaking changes can happen at any time. Use at your own risk.
