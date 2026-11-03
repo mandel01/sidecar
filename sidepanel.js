@@ -174,12 +174,59 @@ function renderHeader(space) {
   els.spaceName.textContent = space.name;
 }
 
-const hasOpenTab = nodes => nodes.some(n => n.type === 'folder' ? hasOpenTab(n.children) : !!boundTab(n.id));
+const hasOpenTab = nodes => nodes.some(n => n.children ? hasOpenTab(n.children) : !!boundTab(n.id));
+
+// A split view: its two tabs side by side in one row. Each half clicks, renames
+// and closes like a tab, but the pair drags as one.
+function splitRow(section, id, halves, depth) {
+  const wrap = document.createElement('div');
+  wrap.className = 'split';
+  wrap.draggable = true;
+  Object.assign(wrap.dataset, { kind: 'split', id, type: 'split', section });
+  wrap.style.setProperty('--depth', depth);
+  for (const h of halves) h.draggable = false;
+  if (halves.some(h => h.classList.contains('active'))) wrap.classList.add('active');
+  wrap.append(...halves);
+  return wrap;
+}
+
+function pinnedRow(n, depth) {
+  const live = boundTab(n.id);
+  return tabRow({
+    kind: 'pinned',
+    id: n.id,
+    title: displayTitle(n.customTitle, live, n.title, n.url),
+    url: n.url,
+    live,
+    asleep: !live,
+    depth,
+    action: live ? 'minimize' : 'delete',
+    actionTitle: live ? 'Close tab (stays pinned)' : 'Remove pinned tab',
+  });
+}
+
+function recordRow(r) {
+  const live = r.tabId != null ? tabs.get(r.tabId) : null;
+  return tabRow({
+    kind: 'tab',
+    id: r.id,
+    title: displayTitle(r.customTitle, live, r.title, r.url),
+    url: r.url,
+    live,
+    asleep: !live,
+    depth: 0,
+    action: 'close',
+    actionTitle: 'Close tab',
+  });
+}
 
 // openOnly: inside a closed folder, list just the open tabs (and folders leading to them).
 function renderNodes(nodes, depth, out, openOnly = false) {
   for (const n of nodes) {
-    if (n.type === 'folder') {
+    if (n.type === 'split') {
+      if (openOnly && !hasOpenTab(n.children)) continue;
+      out.append(splitRow('pinned', n.id, n.children.map(c => pinnedRow(c, 0)), depth));
+    } else if (n.type === 'folder') {
       const partial = (openOnly || n.collapsed) && hasOpenTab(n.children);
       if (openOnly && !partial) continue;
       const state = partial ? 'partial' : n.collapsed ? 'closed' : 'open';
@@ -197,19 +244,8 @@ function renderNodes(nodes, depth, out, openOnly = false) {
       if (state !== 'closed') renderNodes(n.children, depth + 1, wrap, partial);
       out.append(wrap);
     } else {
-      const live = boundTab(n.id);
-      if (openOnly && !live) continue;
-      out.append(tabRow({
-        kind: 'pinned',
-        id: n.id,
-        title: displayTitle(n.customTitle, live, n.title, n.url),
-        url: n.url,
-        live,
-        asleep: !live,
-        depth,
-        action: live ? 'minimize' : 'delete',
-        actionTitle: live ? 'Close tab (stays pinned)' : 'Remove pinned tab',
-      }));
+      if (openOnly && !boundTab(n.id)) continue;
+      out.append(pinnedRow(n, depth));
     }
   }
 }
@@ -227,20 +263,14 @@ function renderPinned(space) {
 }
 
 function renderUnpinned(space) {
-  els.tabList.replaceChildren(...runtime.tabs.filter(r => r.spaceId === space.id).map(r => {
-    const live = r.tabId != null ? tabs.get(r.tabId) : null;
-    return tabRow({
-      kind: 'tab',
-      id: r.id,
-      title: displayTitle(r.customTitle, live, r.title, r.url),
-      url: r.url,
-      live,
-      asleep: !live,
-      depth: 0,
-      action: 'close',
-      actionTitle: 'Close tab',
-    });
-  }));
+  const recs = runtime.tabs.filter(r => r.spaceId === space.id);
+  const rows = [];
+  for (let i = 0; i < recs.length; i++) {
+    const r = recs[i];
+    if (r.splitId && recs[i + 1]?.splitId === r.splitId) rows.push(splitRow('tab', r.splitId, [recordRow(r), recordRow(recs[++i])], 0));
+    else rows.push(recordRow(r));
+  }
+  els.tabList.replaceChildren(...rows);
 }
 
 function renderSpaces(space) {
@@ -347,7 +377,7 @@ function lookup(kind, id) {
 function findIn(nodes, id) {
   for (const n of nodes) {
     if (n.id === id) return n;
-    if (n.type === 'folder') {
+    if (n.children) {
       const f = findIn(n.children, id);
       if (f) return f;
     }
@@ -407,6 +437,8 @@ function rowMenu(row, x, y) {
   if (!item) return;
   const space = currentSpace();
   const rename = { text: 'Rename', run: () => startRename(row) };
+  const splitEl = row.closest('.split');
+  if (splitEl) return showMenu(x, y, splitHalfMenu(row, splitEl, item, space));
 
   if (kind === 'tab') {
     showMenu(x, y, [
@@ -451,6 +483,34 @@ function rowMenu(row, x, y) {
       { text: 'Delete pinned tab', danger: true, run: () => send({ type: 'deleteEntry', id }) },
     ]);
   }
+}
+
+// One side of a split view: this tab's own actions, then the pair's.
+function splitHalfMenu(row, splitEl, item, space) {
+  const { id } = row.dataset;
+  const split = splitEl.dataset.id;
+  const pinned = splitEl.dataset.section === 'pinned';
+  const moveSplit = target => send({ type: 'move', item: { kind: 'split', id: split }, target: { spaceId: space.id, ...target } });
+  return [
+    { text: 'Rename', run: () => startRename(row) },
+    pinned && item.live && { text: 'Set pinned URL to current page', run: () => send({ type: 'setEntryUrl', id }) },
+    pinned && { text: 'Edit pinned URL…', run: () => editEntryUrl(id, item) },
+    { text: 'Copy link', run: () => copy(item.url) },
+    '-',
+    { label: 'Split view' },
+    { text: 'Swap sides', run: () => send({ type: 'swapSplit', id: split }) },
+    { text: 'Separate split view', run: () => send({ type: 'unsplit', id: split }) },
+    pinned
+      ? { text: 'Unpin split view', run: () => moveSplit({ zone: 'unpinned', position: 'start' }) }
+      : { text: 'Pin split view', run: () => moveSplit({ zone: 'pinned', position: 'end' }) },
+    ...spaceTargets('split', split, space.id),
+    '-',
+    pinned && item.live && { text: 'Close tab (stays pinned)', run: () => send({ type: 'minimize', id }) },
+    pinned && { text: 'Close split view (stays pinned)', run: () => send({ type: 'minimize', id: split }) },
+    pinned && { text: 'Delete this pinned tab', danger: true, run: () => send({ type: 'deleteEntry', id }) },
+    pinned && { text: 'Delete split view', danger: true, run: () => send({ type: 'deleteEntry', id: split }) },
+    !pinned && { text: 'Close tab', danger: true, run: () => send({ type: 'closeTab', id }) },
+  ];
 }
 
 function spaceMenu(x, y, space) {
@@ -851,11 +911,22 @@ function computeDrop(e) {
     return { el: zoneEl, cls: 'drop-inside', target: { zone, spaceId: zoneEl.dataset.spaceId } };
   }
   if (drag.type === 'folder' && zone !== 'pinned') return null;
+  if (drag.type === 'split' && zone === 'favorites') return null;
 
   const row = rowOf(e.target);
   if (row && zoneEl.contains(row)) {
     if (row.dataset.id === drag.id) return null;
     if (drag.type === 'folder' && row.closest(`[data-folder="${drag.id}"]`)) return null;
+    // A split view takes drops only before or after it, as a whole.
+    const splitEl = row.closest('.split');
+    if (splitEl) {
+      if (splitEl.dataset.id === drag.id) return null;
+      const r = splitEl.getBoundingClientRect();
+      const position = e.clientY - r.top < r.height / 2 ? 'before' : 'after';
+      const halves = splitEl.querySelectorAll('.row');
+      const refId = zone === 'pinned' ? splitEl.dataset.id : halves[position === 'before' ? 0 : 1].dataset.id;
+      return { el: splitEl, cls: 'drop-' + position, target: { zone, spaceId, refId, position } };
+    }
     const r = row.getBoundingClientRect();
     let position;
     if (row.classList.contains('fav')) {
@@ -864,6 +935,10 @@ function computeDrop(e) {
       const f = (e.clientY - r.top) / r.height;
       if (row.dataset.type === 'folder') {
         position = f < 0.28 ? 'before' : (f > 0.72 && row.classList.contains('collapsed') && !row.classList.contains('partial') ? 'after' : 'inside');
+      } else if (drag.type === 'tab' && drag.kind !== 'fav' && f >= 0.3 && f <= 0.7) {
+        // The middle of a tab makes a split view; which half picks the dragged tab's side.
+        const side = e.clientX - r.left < r.width / 2 ? 'left' : 'right';
+        return { el: row, cls: 'drop-split-' + side, target: { split: true, kind: row.dataset.kind, id: row.dataset.id, side } };
       } else {
         position = f < 0.5 ? 'before' : 'after';
       }
@@ -879,10 +954,12 @@ function computeDrop(e) {
 // is transparent, so the chip itself shows below and right of the cursor.
 // The chip lives offscreen permanently: adding elements during dragstart can
 // cancel the drag.
+const dragName = src => [...src.querySelectorAll('.title')].map(t => t.textContent).join(' | ') || src.title.split('\n')[0];
+
 function setDragChip(e, src) {
   const chip = els.dragChip;
   const icon = src.querySelector('.favicon, .folder-icon, img');
-  const name = src.querySelector('.title')?.textContent || src.title.split('\n')[0];
+  const name = dragName(src);
   chip.classList.toggle('folder', src.dataset.type === 'folder');
   const pill = document.createElement('div');
   const label = document.createElement('span');
@@ -935,7 +1012,12 @@ document.addEventListener('drop', e => {
   e.preventDefault();
   const item = { kind: drag.kind, id: drag.id };
   endDrag();
-  send({ type: 'move', item, target: drop.target });
+  if (drop.target.split) {
+    const { split, ...target } = drop.target;
+    send({ type: 'split', item, target, windowId });
+  } else {
+    send({ type: 'move', item, target: drop.target });
+  }
 });
 
 function endDrag() {

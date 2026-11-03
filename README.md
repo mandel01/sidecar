@@ -9,6 +9,10 @@ A personal Chrome extension that brings Arc's sidebar to Chrome:
 - **Unpinned tabs** sit below the line and are archived after **12 hours** without use. You can change the time in Settings. To get one back, open the archive (box icon, bottom left).
 - **Folders** in the pinned section can be nested. Create one with the folder button in the header or from the right-click menu. Click a folder to open or close it. A closed folder still lists any of its tabs that are open, and its icon gets a colored dot.
 - **Drag and drop** works for tabs and folders: reorder them, drop them into folders, drag across the line to pin or unpin, drag up to Favorites, or drop onto a space icon at the bottom to move them to that space.
+- **Split view** shows two tabs side by side, using Chrome's own split view (Chrome 155 or newer). Drag a tab onto the **middle** of another tab. The half of the row you drop on is the side it goes on, and dropping near a row's top or bottom edge still just reorders. A split shows as one row with both tabs and drags as one piece.
+  - In the pinned section, a split is kept with its left/right order, and it syncs. Closing one side keeps the pair, and clicking either side reopens both.
+  - In the unpinned section, both tabs are archived together once neither has been used for the archive time.
+  - Right-click either side for *Swap sides*, *Separate split view*, pin/unpin and move to space. Separating or swapping with Chrome's own controls updates the sidebar too.
 - **Spaces** each have their own name, emoji icon and color, and the sidebar is tinted with the space's color. Switch spaces by clicking the icons at the bottom, swiping sideways with two fingers on the sidebar, or pressing `Alt+Shift+←/→`.
 - **Favorites** appear in every space, as icons at the top.
 - **Sync**: spaces, pinned tabs, folders, favorites and settings follow you to every computer signed into the same Chrome profile.
@@ -111,6 +115,7 @@ In the sidebar: **click** a tab to open it, **middle-click** to close it, **doub
 - **Pinned tabs** keep their "home" URL. If a pinned tab has navigated somewhere else and you want the new page to be its home, right-click → *Set pinned URL to current page*. To type a home URL yourself, right-click → *Edit pinned URL…* (*Edit URL…* on favorites). If the tab is open, it goes to the new URL.
 - **Restarting Chrome:** with **Continue where you left off** set (see [Before you install](#before-you-install)), Sidecar matches restored tabs back to their spaces and pinned entries. Unpinned tabs that weren't restored stay listed, dimmed, and reopen when you click them.
 - **Multiple windows:** each window can be on a different space.
+- **Split views made in Chrome** (for example right-click a tab → split view) show up as a split in the sidebar when both tabs are in the same section of the same space. A pinned tab split with a tab it opened (say, *Open link in split view*) becomes a pinned split; drag it below the line if you don't want to keep it. A pinned tab split with any other unpinned tab stays as two separate rows.
 
 ## Profiles (Arc's separate logins)
 
@@ -128,6 +133,7 @@ So instead of "assign this space to the Work profile", you put your work spaces 
 - The sidebar is Chrome's side panel, so it opens per window. Use the keyboard shortcut or the toolbar icon to open it.
 - Favicons for tabs that aren't open come from Chrome's favicon cache. A site you've never visited on this computer shows a globe until you open it once.
 - Chrome-pinned tabs (Chrome's own pin) can't be put in tab groups, so they never move into a space's group.
+- Chrome doesn't let extensions read or set where a split view's divider sits, so a pinned split keeps which tab is on which side but always reopens at Chrome's default width.
 
 ## Files
 

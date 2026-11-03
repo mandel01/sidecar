@@ -11,7 +11,7 @@
 // side-panel requests never interleave. The side panel only reads storage and
 // sends messages; it never writes state itself.
 
-import { uid, findNode, removeNode, walk, normalizeLayout, sameUrl } from './shared.js';
+import { uid, findNode, removeNode, walk, normalizeLayout, sameUrl, tidySplits } from './shared.js';
 
 // Storage keys keep the old "vtabs" name: renaming them would orphan existing synced layouts.
 const META_KEY = 'vtabs_meta';
@@ -43,7 +43,7 @@ function mutate(fn) {
 function normalizeRuntime(r = {}) {
   return {
     bindings: r.bindings || {},          // entryId -> { tabId, url, lastActive }
-    tabs: Array.isArray(r.tabs) ? r.tabs : [], // unpinned tab records, in display order
+    tabs: Array.isArray(r.tabs) ? r.tabs : [], // unpinned tab records, in display order (split halves share a splitId)
     windowSpace: r.windowSpace || {},    // windowId -> spaceId
     groups: r.groups || {},              // "windowId:spaceId" -> tab group id
     activeTab: r.activeTab || {},        // windowId -> active tab id
@@ -99,6 +99,8 @@ async function load() {
 }
 
 async function persist(s) {
+  for (const sp of s.layout.spaces) tidySplits(sp.pinned);
+  tidySplitRecords(s);
   const key = layoutKey(s.layout);
   if (key !== lastLayoutKey) {
     s.layout.rev = Date.now();
@@ -511,9 +513,10 @@ function scheduleBookmarks(delay = 3000) {
 }
 
 function bookmarkTree(layout) {
-  const nodes = list => list.map(n => n.type === 'folder'
-    ? { title: n.name, children: nodes(n.children) }
-    : { title: n.customTitle || n.title || n.url, url: n.url }).filter(n => n.children || n.url);
+  // Bookmarks can't show a split view, so its two tabs are listed in its place.
+  const nodes = list => list.flatMap(n => n.type === 'split' ? nodes(n.children)
+    : n.type === 'folder' ? [{ title: n.name, children: nodes(n.children) }]
+    : [{ title: n.customTitle || n.title || n.url, url: n.url }]).filter(n => n.children || n.url);
   return [
     { title: '★ Favorites', children: nodes(layout.favorites) },
     ...layout.spaces.map(sp => ({ title: `${sp.icon} ${sp.name}`.trim(), children: nodes(sp.pinned) })),
@@ -616,29 +619,47 @@ async function focusTab(tabId) {
 }
 
 async function activate(s, { kind, id, windowId }) {
+  let tabId;
   if (kind === 'tab') {
     const r = s.runtime.tabs.find(x => x.id === id);
     if (!r) return;
-    if (r.tabId != null && await focusTab(r.tabId)) return;
-    const t = await chrome.tabs.create({ windowId, url: r.url || undefined, active: true });
-    r.tabId = t.id;
-    r.lastActive = Date.now();
+    if (r.tabId == null || !await focusTab(r.tabId)) {
+      const t = await chrome.tabs.create({ windowId, url: r.url || undefined, active: true });
+      r.tabId = t.id;
+      r.lastActive = Date.now();
+    }
+    tabId = r.tabId;
   } else {
     const e = findEntry(s, id);
     if (!e) return;
     const b = s.runtime.bindings[id];
-    if (b && await focusTab(b.tabId)) return;
-    const t = await chrome.tabs.create({ windowId, url: e.entry.url, active: true });
-    s.runtime.bindings[id] = { tabId: t.id, url: e.entry.url, lastActive: Date.now() };
+    if (!b || !await focusTab(b.tabId)) {
+      const t = await chrome.tabs.create({ windowId, url: e.entry.url, active: true });
+      s.runtime.bindings[id] = { tabId: t.id, url: e.entry.url, lastActive: Date.now() };
+    }
+    tabId = s.runtime.bindings[id].tabId;
+  }
+  // Opening either side of a split view brings back both, side by side.
+  const split = splitOfTab(s, tabId);
+  if (split) {
+    await openSplit(s, split, windowId);
+    await focusTab(tabId);
   }
   scheduleGroups(windowId);
 }
 
+// Closes an entry's tab, or both tabs of a pinned split, keeping them pinned.
 async function minimize(s, id) {
-  const b = s.runtime.bindings[id];
-  if (!b) return;
-  delete s.runtime.bindings[id];
-  await closeTabs(s, [b.tabId]);
+  const node = findInSpaces(s, id)?.node;
+  const ids = node && node.type === 'split' ? node.children.map(c => c.id) : [id];
+  const tabIds = [];
+  for (const eid of ids) {
+    const b = s.runtime.bindings[eid];
+    if (!b) continue;
+    delete s.runtime.bindings[eid];
+    tabIds.push(b.tabId);
+  }
+  await closeTabs(s, tabIds);
 }
 
 function detachEntryNode(s, id) {
@@ -689,12 +710,36 @@ function insertTree(nodes, node, refId, position) {
   }
 }
 
-// item:   { kind: 'fav' | 'pinned' | 'tab', id }
+// Unpinned record -> pinned entry node, keeping its open tab.
+function recordToNode(s, rec) {
+  const node = { id: uid(), type: 'tab', url: rec.url, title: rec.title, customTitle: rec.customTitle || '' };
+  if (rec.tabId != null) s.runtime.bindings[node.id] = { tabId: rec.tabId, url: rec.url, lastActive: rec.lastActive };
+  return node;
+}
+
+// Pinned entry node -> unpinned record, keeping its open tab.
+function nodeToRecord(s, node, spaceId) {
+  const b = s.runtime.bindings[node.id];
+  delete s.runtime.bindings[node.id];
+  const rec = newRecord(null, spaceId);
+  Object.assign(rec, {
+    tabId: b ? b.tabId : null,
+    url: b ? b.url : node.url,
+    title: node.title,
+    customTitle: node.customTitle || '',
+  });
+  return rec;
+}
+
+// item:   { kind: 'fav' | 'pinned' | 'tab' | 'split', id }
 // target: { zone: 'favorites' | 'pinned' | 'unpinned' | 'space', spaceId, refId?, position? }
 async function move(s, item, target) {
   const rt = s.runtime;
   const { zone } = target;
   if (target.spaceId && !spaceById(s, target.spaceId)) return;
+  // Nothing goes inside a split view: land next to it instead.
+  const host = target.refId && splitOfEntry(s, target.refId);
+  if (host) target = { ...target, refId: host.node.id, position: target.position === 'before' ? 'before' : 'after' };
   if (target.refId === item.id) return;
 
   let src;
@@ -707,18 +752,28 @@ async function move(s, item, target) {
   } else if (item.kind === 'tab') {
     const rec = rt.tabs.find(r => r.id === item.id);
     if (rec) src = { rec };
+  } else if (item.kind === 'split') {
+    const f = findInSpaces(s, item.id);
+    const recs = splitRecords(s, item.id);
+    if (f && f.node.type === 'split') src = { node: f.node };
+    else if (recs.length === 2) src = { recs };
   }
   if (!src) return;
 
   const isFolder = src.node && src.node.type === 'folder';
   if (isFolder && (zone === 'favorites' || zone === 'unpinned')) throw new Error('Folders can only live in the pinned section.');
   if (isFolder && target.refId && findNode(src.node.children, target.refId)) return; // into itself
+  if (item.kind === 'split' && zone === 'favorites') throw new Error('Split views can’t go in Favorites.');
 
-  // Unpinned tab staying unpinned: reorder or change space.
-  if (src.rec && (zone === 'unpinned' || zone === 'space')) {
-    removeRecord(s, src.rec.id);
-    src.rec.spaceId = target.spaceId;
-    insertRecordAt(s, src.rec, zone === 'unpinned' ? target.refId : null, zone === 'unpinned' ? target.position : 'start');
+  // Unpinned tab (or split) staying unpinned: reorder or change space.
+  const recs = src.rec ? [src.rec] : src.recs;
+  if (recs && (zone === 'unpinned' || zone === 'space')) {
+    for (const r of recs) {
+      removeRecord(s, r.id);
+      r.spaceId = target.spaceId;
+    }
+    insertRecordAt(s, recs[0], zone === 'unpinned' ? target.refId : null, zone === 'unpinned' ? target.position : 'start');
+    if (recs[1]) insertRecordAt(s, recs[1], recs[0].id, 'after');
     scheduleAllGroups();
     return;
   }
@@ -727,23 +782,20 @@ async function move(s, item, target) {
   let node;
   if (src.rec) {
     removeRecord(s, src.rec.id);
-    node = { id: uid(), type: 'tab', url: src.rec.url, title: src.rec.title, customTitle: src.rec.customTitle || '' };
-    if (src.rec.tabId != null) rt.bindings[node.id] = { tabId: src.rec.tabId, url: src.rec.url, lastActive: src.rec.lastActive };
+    node = recordToNode(s, src.rec);
+  } else if (src.recs) {
+    for (const r of src.recs) removeRecord(s, r.id);
+    node = { id: item.id, type: 'split', children: src.recs.map(r => recordToNode(s, r)) };
   } else {
     node = detachEntryNode(s, src.node.id);
   }
 
   if (zone === 'unpinned') {
-    const b = rt.bindings[node.id];
-    delete rt.bindings[node.id];
-    const rec = newRecord(null, target.spaceId);
-    Object.assign(rec, {
-      tabId: b ? b.tabId : null,
-      url: b ? b.url : node.url,
-      title: node.title,
-      customTitle: node.customTitle || '',
-    });
-    insertRecordAt(s, rec, target.refId, target.position);
+    const isSplit = node.type === 'split';
+    const out = (isSplit ? node.children : [node]).map(n => nodeToRecord(s, n, target.spaceId));
+    if (isSplit) for (const r of out) r.splitId = node.id;
+    insertRecordAt(s, out[0], target.refId, target.position);
+    if (out[1]) insertRecordAt(s, out[1], out[0].id, 'after');
   } else if (zone === 'favorites') {
     insertList(s.layout.favorites, node, target.refId, target.position);
   } else if (zone === 'pinned') {
@@ -752,6 +804,260 @@ async function move(s, item, target) {
     spaceById(s, target.spaceId).pinned.push(node);
   }
   scheduleAllGroups();
+}
+
+// ---------------------------------------------------------------------------
+// Split view: two tabs side by side, using Chrome's own split view (Chrome 155+).
+// A pinned split is a { type: 'split', children: [left, right] } node, synced and
+// kept like any pinned tab. An unpinned split is two adjacent records sharing a
+// splitId; they archive together. Chrome can't report or set where the divider
+// sits, so the arrangement kept is which tab is on which side.
+
+const NO_SPLIT = -1; // chrome.tabs.SPLIT_VIEW_ID_NONE
+const canSplit = () => typeof chrome.tabs.createSplit === 'function';
+
+const splitRecords = (s, splitId) => s.runtime.tabs.filter(r => r.splitId === splitId);
+
+// The pinned split node holding an entry, if any.
+function splitOfEntry(s, entryId) {
+  for (const sp of s.layout.spaces) {
+    let node = null;
+    walk(sp.pinned, n => { if (!node && n.type === 'split' && n.children.some(c => c.id === entryId)) node = n; });
+    if (node) return { node, spaceId: sp.id };
+  }
+  return null;
+}
+
+// A split as { kind: 'pinned' | 'tab', id, spaceId, halves }, halves left first,
+// each { tabId, url, bind(tabId) } where bind records a newly opened tab.
+function splitById(s, id) {
+  const rt = s.runtime;
+  const f = findInSpaces(s, id);
+  if (f && f.node.type === 'split') {
+    return {
+      kind: 'pinned', id, spaceId: f.spaceId,
+      halves: f.node.children.map(c => ({
+        tabId: rt.bindings[c.id]?.tabId ?? null,
+        url: c.url,
+        bind: tabId => { rt.bindings[c.id] = { tabId, url: c.url, lastActive: Date.now() }; },
+      })),
+    };
+  }
+  const recs = splitRecords(s, id);
+  if (recs.length !== 2) return null;
+  return {
+    kind: 'tab', id, spaceId: recs[0].spaceId,
+    halves: recs.map(r => ({ tabId: r.tabId, url: r.url, bind: tabId => { r.tabId = tabId; r.lastActive = Date.now(); } })),
+  };
+}
+
+// The split a Chrome tab belongs to in Sidecar, if any.
+function splitOfTab(s, tabId) {
+  const rec = recordForTab(s, tabId);
+  if (rec) return rec.splitId ? splitById(s, rec.splitId) : null;
+  const eid = entryIdForTab(s, tabId);
+  const f = eid && splitOfEntry(s, eid);
+  return f ? splitById(s, f.node.id) : null;
+}
+
+// Unpinned split halves sit next to each other, in the same space. One whose
+// other side has gone (closed, or moved away) is a plain tab again.
+function tidySplitRecords(s) {
+  const list = s.runtime.tabs;
+  const count = {};
+  for (const r of list) if (r.splitId) count[r.splitId] = (count[r.splitId] || 0) + 1;
+  for (const r of list) if (r.splitId && count[r.splitId] !== 2) delete r.splitId;
+  for (let i = 0; i < list.length - 1; i++) {
+    const id = list[i].splitId;
+    if (!id) continue;
+    if (list[i + 1].splitId !== id) list.splice(i + 1, 0, ...list.splice(list.findIndex((r, k) => k > i && r.splitId === id), 1));
+    list[i + 1].spaceId = list[i].spaceId;
+    i++;
+  }
+}
+
+// Turns a split back into two separate tabs, in place (Sidecar's side only).
+function dissolveSplit(s, split) {
+  if (split.kind === 'tab') {
+    for (const r of splitRecords(s, split.id)) delete r.splitId;
+    return;
+  }
+  const f = findInSpaces(s, split.id);
+  if (f) f.list.splice(f.index, 1, ...f.node.children);
+}
+
+function reverseSplit(s, split) {
+  if (split.kind === 'tab') {
+    const [a, b] = splitRecords(s, split.id);
+    removeRecord(s, b.id);
+    insertRecordAt(s, b, a.id, 'before');
+  } else {
+    findInSpaces(s, split.id).node.children.reverse();
+  }
+}
+
+// Shows two open tabs in Chrome's split view, left then right. Chrome needs
+// them adjacent, in the same window, group and pinned state, so line them up first.
+async function ensureSplit(leftId, rightId) {
+  if (!canSplit()) return;
+  const get = id => chrome.tabs.get(id).catch(() => null);
+  let [l, r] = await Promise.all([get(leftId), get(rightId)]);
+  if (!l || !r) return;
+  if (l.splitViewId > NO_SPLIT && l.splitViewId === r.splitViewId && l.index < r.index) return;
+  for (const id of new Set([l.splitViewId, r.splitViewId])) {
+    if (id > NO_SPLIT) await chrome.tabs.unsplit(id).catch(() => {});
+  }
+  if (r.windowId !== l.windowId) await chrome.tabs.move(r.id, { windowId: l.windowId, index: -1 });
+  if (r.pinned !== l.pinned) await chrome.tabs.update(r.id, { pinned: l.pinned });
+  r = await get(r.id);
+  if (r.groupId !== l.groupId) {
+    if (l.groupId === -1) await chrome.tabs.ungroup(r.id);
+    else await chrome.tabs.group({ tabIds: r.id, groupId: l.groupId });
+  }
+  [l, r] = await Promise.all([get(l.id), get(r.id)]);
+  if (r.index !== l.index + 1) await chrome.tabs.move(r.id, { index: r.index < l.index ? l.index : l.index + 1 });
+  await chrome.tabs.createSplit([l.id, r.id]);
+}
+
+// Opens whichever sides of a split are closed, then splits them in Chrome.
+async function openSplit(s, split, windowId) {
+  const open = split.halves.find(h => h.tabId != null);
+  const t = open && await chrome.tabs.get(open.tabId).catch(() => null);
+  if (t) windowId = t.windowId;
+  for (const h of split.halves) {
+    if (h.tabId != null && await tabExists(h.tabId)) continue;
+    const created = await chrome.tabs.create({ windowId, url: h.url || undefined, active: false });
+    h.bind(created.id);
+    h.tabId = created.id;
+  }
+  await ensureSplit(split.halves[0].tabId, split.halves[1].tabId);
+}
+
+// Drag and drop of one tab onto another, after the side panel's confirmation.
+// The split lives where the target tab is: kept if pinned, archived if not.
+// target: { kind: 'pinned' | 'tab', id, side: 'left' | 'right' } (the dragged tab's side)
+async function makeSplit(s, item, target, windowId) {
+  if (!canSplit()) throw new Error('Split view needs Chrome 155 or newer.');
+  const rt = s.runtime;
+  if (item.id === target.id || item.kind === 'fav') return;
+  if (item.kind === 'tab' && rt.tabs.find(r => r.id === item.id)?.splitId) return;
+  if (item.kind === 'pinned' && (findInSpaces(s, item.id)?.node.type !== 'tab' || splitOfEntry(s, item.id))) return;
+  const position = target.side === 'left' ? 'before' : 'after';
+  let split;
+  if (target.kind === 'tab') {
+    const rec = rt.tabs.find(r => r.id === target.id);
+    if (!rec || rec.splitId) return;
+    await move(s, item, { zone: 'unpinned', spaceId: rec.spaceId, refId: rec.id, position });
+    const i = rt.tabs.indexOf(rec);
+    const other = rt.tabs[position === 'before' ? i - 1 : i + 1];
+    if (!other || other.splitId) return;
+    rec.splitId = other.splitId = uid();
+    split = splitById(s, rec.splitId);
+  } else {
+    const f = findInSpaces(s, target.id);
+    if (!f || f.node.type !== 'tab' || splitOfEntry(s, target.id)) return;
+    await move(s, item, { zone: 'pinned', spaceId: f.spaceId, refId: target.id, position });
+    const g = findNode(spaceById(s, f.spaceId).pinned, target.id);
+    const start = position === 'before' ? g.index - 1 : g.index;
+    const pair = g.list.slice(start, start + 2);
+    if (start < 0 || pair.length !== 2 || pair.some(n => n.type !== 'tab')) return;
+    const node = { id: uid(), type: 'split', children: pair };
+    g.list.splice(start, 2, node);
+    split = splitById(s, node.id);
+  }
+  await openSplit(s, split, windowId);
+  const shown = split.halves[position === 'before' ? 1 : 0].tabId;
+  if (shown != null) await focusTab(shown);
+  scheduleAllGroups();
+}
+
+// "Separate split view": two ordinary tabs again, in Sidecar and in Chrome.
+async function separateSplit(s, id) {
+  const split = splitById(s, id);
+  if (!split) return;
+  const t = split.halves[0].tabId != null && await chrome.tabs.get(split.halves[0].tabId).catch(() => null);
+  if (t && t.splitViewId > NO_SPLIT) await chrome.tabs.unsplit(t.splitViewId).catch(() => {});
+  dissolveSplit(s, split);
+}
+
+async function swapSplit(s, id) {
+  const split = splitById(s, id);
+  if (!split) return;
+  reverseSplit(s, split);
+  const [a, b] = split.halves;
+  if (a.tabId != null && b.tabId != null) await ensureSplit(b.tabId, a.tabId);
+}
+
+// Chrome's own split view controls report through tabs.onUpdated. Wait a moment
+// so a tab that closed is already gone, then bring Sidecar in line with Chrome.
+// Sidecar's own split changes land here too, and are already in line.
+const splitTimers = new Map();
+function scheduleSplitCheck(tabId) {
+  clearTimeout(splitTimers.get(tabId));
+  splitTimers.set(tabId, setTimeout(() => {
+    splitTimers.delete(tabId);
+    mutate(s => syncSplitFromChrome(s, tabId));
+  }, 400));
+}
+
+async function syncSplitFromChrome(s, tabId) {
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (!tab) return;
+  const ours = splitOfTab(s, tabId);
+  if (tab.splitViewId === NO_SPLIT) {
+    if (!ours) return;
+    // Closing one side ends Chrome's split, but the pair stays together in
+    // Sidecar (pinned) or tidies itself away (unpinned). Only both sides still
+    // open means the split was separated.
+    const other = ours.halves.find(h => h.tabId !== tabId);
+    if (other.tabId != null && !recentlyRemoved.has(other.tabId) && await tabExists(other.tabId)) dissolveSplit(s, ours);
+    return;
+  }
+  const pair = (await chrome.tabs.query({ windowId: tab.windowId, splitViewId: tab.splitViewId })).sort((a, b) => a.index - b.index);
+  if (pair.length !== 2) return;
+  const [left, right] = pair.map(t => t.id);
+  if (ours && ours.halves.every(h => h.tabId === left || h.tabId === right)) {
+    if (ours.halves[0].tabId !== left) reverseSplit(s, ours); // sides swapped in Chrome
+    return;
+  }
+  if (ours) dissolveSplit(s, ours);
+  const theirs = splitOfTab(s, tabId === left ? right : left);
+  if (theirs) dissolveSplit(s, theirs);
+  adoptSplit(s, pair[0], pair[1]);
+}
+
+// A split made in Chrome joins the sidebar when both tabs are in the same
+// section of the same space. A pinned tab split with an unpinned tab it opened
+// (say, "open link in split view") becomes a pinned split; drag it below the
+// line to let it archive. Any other mix stays as two rows.
+function adoptSplit(s, leftTab, rightTab) {
+  const leftId = leftTab.id, rightId = rightTab.id;
+  const a = recordForTab(s, leftId), b = recordForTab(s, rightId);
+  if (a && b) {
+    if (a.spaceId !== b.spaceId) return;
+    removeRecord(s, b.id);
+    insertRecordAt(s, b, a.id, 'after');
+    a.splitId = b.splitId = uid();
+    return;
+  }
+  const ea = entryIdForTab(s, leftId), eb = entryIdForTab(s, rightId);
+  const fa = ea && findInSpaces(s, ea), fb = eb && findInSpaces(s, eb);
+  const rec = a || b;
+  const pinnedSide = fa || fb;
+  if (rec && pinnedSide && !(fa && fb)) {
+    const [pinnedTab, recTab] = a ? [rightTab, leftTab] : [leftTab, rightTab];
+    if (recTab.openerTabId !== pinnedTab.id || rec.spaceId !== pinnedSide.spaceId) return;
+    removeRecord(s, rec.id);
+    const node = recordToNode(s, rec);
+    const children = a ? [node, pinnedSide.node] : [pinnedSide.node, node];
+    pinnedSide.list.splice(pinnedSide.index, 1, { id: uid(), type: 'split', children });
+    return;
+  }
+  if (!fa || !fb || fa.spaceId !== fb.spaceId) return;
+  const pinned = spaceById(s, fa.spaceId).pinned;
+  const right = removeNode(pinned, eb);
+  const f = findNode(pinned, ea);
+  f.list.splice(f.index, 1, { id: uid(), type: 'split', children: [f.node, right] });
 }
 
 // ---------------------------------------------------------------------------
@@ -826,6 +1132,9 @@ const handlers = {
   },
 
   move: (s, { item, target }) => move(s, item, target),
+  split: (s, { item, target, windowId }) => makeSplit(s, item, target, windowId),
+  unsplit: (s, { id }) => separateSplit(s, id),
+  swapSplit: (s, { id }) => swapSplit(s, id),
 
   pinTab: (s, { id }) => {
     const r = s.runtime.tabs.find(x => x.id === id);
@@ -991,6 +1300,7 @@ chrome.tabs.onRemoved.addListener((tabId, info) => {
 });
 
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
+  if ('splitViewId' in change) scheduleSplitCheck(tabId);
   if (!('url' in change) && !('title' in change)) return;
   mutate(async s => {
     const rec = recordForTab(s, tabId);
@@ -1093,8 +1403,9 @@ chrome.alarms.onAlarm.addListener(alarm => {
     const hours = Number(s.layout.settings.archiveHours);
     if (!hours || hours <= 0) return;
     const limit = hours * 3600_000;
-    const expired = s.runtime.tabs.filter(r =>
-      now - (r.lastActive || 0) > limit && !activeIds.has(r.tabId) && !audible.has(r.tabId));
+    const unused = r => now - (r.lastActive || 0) > limit && !activeIds.has(r.tabId) && !audible.has(r.tabId);
+    // Both sides of a split view are on screen together, so they archive together.
+    const expired = s.runtime.tabs.filter(r => unused(r) && (!r.splitId || splitRecords(s, r.splitId).every(unused)));
     if (expired.length) await archiveRecords(s, expired);
   });
 });
@@ -1110,6 +1421,15 @@ chrome.commands.onCommand.addListener((command, tab) => mutate(async s => {
   if (!active) return;
   const rec = recordForTab(s, active.id);
   const eid = entryIdForTab(s, active.id);
+  const split = splitOfTab(s, active.id);
+  if (split) {
+    // A split view pins and unpins as a pair, and can't be a favorite.
+    if (command !== 'toggle-pin') return;
+    const target = split.kind === 'tab'
+      ? { zone: 'pinned', spaceId: split.spaceId, position: 'end' }
+      : { zone: 'unpinned', spaceId: split.spaceId, position: 'start' };
+    return move(s, { kind: 'split', id: split.id }, target);
+  }
   if (command === 'toggle-pin') {
     if (rec) return move(s, { kind: 'tab', id: rec.id }, { zone: 'pinned', spaceId: rec.spaceId, position: 'end' });
     if (eid) return handlers.unpin(s, { id: eid, windowId });

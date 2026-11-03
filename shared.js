@@ -42,9 +42,27 @@ export function defaultLayout() {
 
 function normalizeNodes(nodes) {
   if (!Array.isArray(nodes)) return [];
-  return nodes.filter(n => n && n.id).map(n => n.type === 'folder'
-    ? { id: n.id, type: 'folder', name: String(n.name || 'Folder'), collapsed: !!n.collapsed, children: normalizeNodes(n.children) }
-    : { id: n.id, type: 'tab', url: String(n.url || ''), title: String(n.title || ''), customTitle: String(n.customTitle || '') });
+  return tidySplits(nodes.filter(n => n && n.id).map(n => {
+    if (n.type === 'folder') {
+      return { id: n.id, type: 'folder', name: String(n.name || 'Folder'), collapsed: !!n.collapsed, children: normalizeNodes(n.children) };
+    }
+    if (n.type === 'split') {
+      return { id: n.id, type: 'split', children: normalizeNodes(n.children).filter(c => c.type === 'tab') };
+    }
+    return { id: n.id, type: 'tab', url: String(n.url || ''), title: String(n.title || ''), customTitle: String(n.customTitle || '') };
+  }));
+}
+
+// A split view node holds exactly two tabs, left then right. One left with
+// fewer (its other side was deleted, maybe on another computer) goes back to
+// being a plain pinned tab.
+export function tidySplits(nodes) {
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i];
+    if (n.type === 'folder') tidySplits(n.children);
+    else if (n.type === 'split' && n.children.length !== 2) nodes.splice(i, 1, ...n.children);
+  }
+  return nodes;
 }
 
 // Coerces anything (old versions, imports, sync data) into a valid layout.
@@ -72,7 +90,7 @@ export function findNode(nodes, id) {
   for (let i = 0; i < nodes.length; i++) {
     const n = nodes[i];
     if (n.id === id) return { node: n, list: nodes, index: i };
-    if (n.type === 'folder') {
+    if (n.children) {
       const f = findNode(n.children, id);
       if (f) return f;
     }
@@ -90,7 +108,7 @@ export function removeNode(nodes, id) {
 export function walk(nodes, fn) {
   for (const n of nodes) {
     fn(n);
-    if (n.type === 'folder') walk(n.children, fn);
+    if (n.children) walk(n.children, fn);
   }
 }
 
