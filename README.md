@@ -107,7 +107,7 @@ To change any of these, go to `chrome://extensions/shortcuts`, or Settings → *
 
 **Switching between recent tabs** works like `⌘Tab`. First set *Switch to a recent tab* to `⌘E` in `chrome://extensions/shortcuts` on each computer. Then hold `⌘` and press `E` to see your open tabs, most recently used first. Press `E` again to move down the list, and let go of `⌘` to switch.
 
-**The command bar** is like Arc's `⌘T`. Set *Command bar* to `⌘T` in `chrome://extensions/shortcuts` on each computer, then press it to open a box at the top of the window. Type an address to go there, or words to search (both open in a new tab), find an open or pinned tab, or run a command on the current tab: Copy Current URL, Duplicate, Pin, Rename, Move Tab to a space, Split View, Zoom, Reopen Last Closed Tab, and more. Use `↑`/`↓` to choose and `Enter` to run; `Esc` closes it. If you'd rather keep `⌘T` for Chrome's plain new tab, give the command bar another shortcut, or leave it unset.
+**The command bar** is like Arc's `⌘T`. Set *Command bar* to `⌘T` in `chrome://extensions/shortcuts` on each computer, then press it to open a box at the top of the window. Type an address to go there, or words to search (both open in a new tab), find an open or pinned tab, or run a command on the current tab: Copy Current URL, Duplicate, Pin, Rename, Move Tab to a space, Split View, Zoom, Video Miniplayer (Picture in Picture), Reopen Last Closed Tab, and more. Use `↑`/`↓` to choose and `Enter` to run; `Esc` closes it. If you'd rather keep `⌘T` for Chrome's plain new tab, give the command bar another shortcut, or leave it unset.
 
 **Recommended on a Mac:** set *Open the sidebar* to `⌘S`, which is closer to Arc's sidebar toggle. Chrome won't let an extension claim one of its own shortcuts by default (`⌘S` is Save Page), so you have to set it by hand in `chrome://extensions/shortcuts`. Do this on each computer, and again whenever you remove and reinstall Sidecar.
 
@@ -132,6 +132,8 @@ Arc moved a playing video into a floating miniplayer on its own when you switche
 3. In the small media panel that opens, click the **Picture-in-picture** button <img src="docs/picture-in-picture.svg" height="18" alt="Picture-in-picture button">.
 
 The video moves to a small window that stays in front of all your other windows, including other apps on a Mac, while you switch tabs and spaces. Drag it to move it, and drag a corner to resize it. To put the video back in its tab, use the back-to-tab button in the floating window; to stop it, close the window. (Note that your icons might look slightly different from the ones drawn here.)
+
+If you use the [command bar](#keyboard-shortcuts), type *Video* instead: it floats the video playing in the current tab.
 
 ## Profiles (Arc's separate logins)
 

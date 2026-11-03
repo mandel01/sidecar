@@ -19,6 +19,23 @@ let done = false;
 
 const spaceLabel = sp => `${sp.icon ? sp.icon + ' ' : ''}${sp.name}`;
 
+// Runs inside the page (each frame). Floats the biggest playing video, or puts
+// back the one already floating. Chrome only allows it straight after a key
+// press or click, so it's injected from here, not from the background.
+function togglePictureInPicture() {
+  if (document.pictureInPictureElement) return document.exitPictureInPicture();
+  const area = v => v.clientWidth * v.clientHeight;
+  const videos = [...document.querySelectorAll('video')].filter(v => v.readyState > 0 && area(v) > 0);
+  const playing = videos.filter(v => !v.paused);
+  const pick = (playing.length ? playing : window === top ? videos : []).sort((a, b) => area(b) - area(a))[0];
+  if (!pick) return;
+  pick.disablePictureInPicture = false;
+  return pick.requestPictureInPicture().catch(() => {});
+}
+
+const pictureInPicture = tabId =>
+  chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: togglePictureInPicture });
+
 // Every command that makes sense for the current tab. `extra` ones only show
 // up when typed for, to keep the starting list short.
 function commands() {
@@ -52,6 +69,7 @@ function commands() {
     ...(c.inSidecar ? others : []).map(sp => ({ name: `Move Tab to ${spaceLabel(sp)}`, icon: '↪', action: 'move-to-space', arg: sp.id, keys: 'space pin', color: sp.color, extra: true })),
     ...cmd(true, 'New Space…', '+', 'new-space', { keys: 'create', prompt: { placeholder: 'Name of the new space' } }),
     ...cmd(true, 'Clear Unpinned Tabs', '⌫', 'clear-unpinned', { keys: 'archive all today' }),
+    ...cmd(/^(https?|file):/.test(c.url || ''), 'Video Miniplayer (Picture in Picture)', '▣', null, { keys: 'pip video float floating miniplayer pop out', local: () => pictureInPicture(c.tabId) }),
     ...cmd(true, 'Open Sidebar', '▤', null, { keys: 'side panel sidecar', local: () => chrome.sidePanel.open({ windowId }) }),
     ...cmd(true, 'New Window', '□', 'new-window'),
     ...cmd(true, 'New Incognito Window', '◐', 'new-incognito', { keys: 'private' }),

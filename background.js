@@ -1191,6 +1191,7 @@ async function commandBarData(s, windowId) {
   const entry = eid && !fav ? findEntry(s, eid)?.entry : null;
   return {
     ctx: {
+      tabId: tab?.id ?? null,
       page: !!tab && !isNewTabUrl(url),
       url,
       title: tab?.title || '',
