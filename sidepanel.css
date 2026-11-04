@@ -159,7 +159,7 @@ body.dragging #favorites:empty::after {
   align-items: center;
   gap: 8px;
   height: 32px;
-  padding: 0 4px 0 calc(8px + var(--depth, 0) * 16px);
+  padding: 0 10px 0 calc(8px + var(--depth, 0) * 16px); /* right: clear of an overlay scrollbar */
   border-radius: 8px;
   cursor: pointer;
   position: relative;
