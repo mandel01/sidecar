@@ -95,17 +95,9 @@ body.dragging #favorites:empty::after {
 .fav:hover { background: color-mix(in srgb, var(--row-hover) 100%, var(--space) 10%); }
 .fav.active { background: var(--row-active); box-shadow: var(--row-active-shadow); }
 .fav img { width: 20px; height: 20px; }
-.fav:not(.open) img { opacity: 0.6; }
-
-.fav.open::after {
-  content: "";
-  position: absolute;
-  bottom: 4px;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--space);
-}
+/* Not open: dimmed like a sleeping tab, and only outlined, not filled. */
+.fav:not(.open):not(.active):not(:hover) { background: none; box-shadow: inset 0 0 0 1px var(--line); }
+.fav:not(.open) img { opacity: 0.55; }
 
 /* Header ---------------------------------------------------------------- */
 
