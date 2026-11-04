@@ -927,7 +927,7 @@ function computeDrop(e) {
       const f = (e.clientY - r.top) / r.height;
       if (row.dataset.type === 'folder') {
         position = f < 0.28 ? 'before' : (f > 0.72 && row.classList.contains('collapsed') && !row.classList.contains('partial') ? 'after' : 'inside');
-      } else if (drag.type === 'tab' && drag.kind !== 'fav' && f >= 0.3 && f <= 0.7) {
+      } else if (drag.type === 'tab' && drag.kind !== 'fav' && f >= 0.4 && f <= 0.6) {
         // The middle of a tab makes a split view; which half picks the dragged tab's side.
         const side = e.clientX - r.left < r.width / 2 ? 'left' : 'right';
         return { el: row, cls: 'drop-split-' + side, target: { split: true, kind: row.dataset.kind, id: row.dataset.id, side } };
