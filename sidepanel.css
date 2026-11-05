@@ -228,7 +228,7 @@ body.dragging #favorites:empty::after {
   stroke-linejoin: round;
 }
 
-.folder .folder-icon .dot { fill: var(--space); stroke: none; }
+.folder .folder-icon .dot { fill: var(--muted); stroke: none; }
 
 .folder .title { font-weight: 500; }
 

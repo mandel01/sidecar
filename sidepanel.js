@@ -22,7 +22,7 @@ const FOLDER_SVG = {
   closed: `<svg class="folder-icon" viewBox="0 0 16 16">${FOLDER_CLOSED_PATH}</svg>`,
   open: '<svg class="folder-icon" viewBox="0 0 16 16"><path d="M1.5 12.5v-8a1 1 0 0 1 1-1h4L8 5h5a1 1 0 0 1 1 1v1.5"/><path d="M1.5 12.5l1.8-4.3a1 1 0 0 1 .9-.7h10.3a.6.6 0 0 1 .55.85l-1.75 4.55a1 1 0 0 1-.9.6H2.5a1 1 0 0 1-1-1Z"/></svg>',
   // Closed, but some of its tabs are open (and still listed under it).
-  partial: `<svg class="folder-icon" viewBox="0 0 16 16">${FOLDER_CLOSED_PATH}<circle class="dot" cx="10.5" cy="9.5" r="2"/></svg>`,
+  partial: `<svg class="folder-icon" viewBox="0 0 16 16">${FOLDER_CLOSED_PATH}<circle class="dot" cx="5.8" cy="9.5" r="1.7"/><circle class="dot" cx="10.2" cy="9.5" r="1.7"/></svg>`,
 };
 
 let layout = null;
