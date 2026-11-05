@@ -1,7 +1,7 @@
 // Side panel UI. Reads state from chrome.storage.local, asks the background
 // worker to make every change, and re-renders whenever storage or tabs change.
 
-import { COLOR_HEX, GROUP_COLORS, ICON_PRESETS, FALLBACK_ICON, compactTitle, hostOf, faviconFor } from './shared.js';
+import { COLOR_HEX, GROUP_COLORS, ICON_PRESETS, FALLBACK_ICON, compactTitle, hostOf, faviconFor, walk } from './shared.js';
 
 const $ = id => document.getElementById(id);
 const els = {
@@ -285,12 +285,21 @@ function renderSpaces(space) {
 
 // ---------------------------------------------------------------------------
 // Selecting several tabs: ⌘-click (Ctrl elsewhere) adds or removes one, ⇧-click
-// adds a run of them. Pinned and unpinned tabs only, not favorites, folders or
+// adds a run of them. Pinned and unpinned tabs and folders, not favorites or
 // split views.
 
 const keyOf = row => `${row.dataset.kind}:${row.dataset.id}`;
-const selectableRows = () => [...document.querySelectorAll('#pinned .row.tab, #tab-list .row.tab')].filter(r => !r.closest('.split'));
-const isSelectable = row => row.matches('#pinned .row.tab, #tab-list .row.tab') && !row.closest('.split');
+const SELECTABLE = '#pinned .row.tab, #pinned .row.folder, #tab-list .row.tab';
+const selectableRows = () => [...document.querySelectorAll(SELECTABLE)].filter(r => !r.closest('.split'));
+const isSelectable = row => row.matches(SELECTABLE) && !row.closest('.split');
+
+// Inside a folder that's selected too, so it goes wherever the folder goes.
+function inSelectedFolder(row) {
+  let wrap = row.parentElement.closest('.folder-wrap');
+  if (wrap && wrap.dataset.folder === row.dataset.id) wrap = wrap.parentElement.closest('.folder-wrap');
+  for (; wrap; wrap = wrap.parentElement.closest('.folder-wrap')) if (selection.has(`pinned:${wrap.dataset.folder}`)) return true;
+  return false;
+}
 
 function applySelection() {
   const rows = selectableRows();
@@ -330,10 +339,28 @@ function selectClick(row, range) {
 }
 
 // The selected tabs in sidebar order, with their current URLs.
-const selectedItems = () => selectableRows().filter(r => selection.has(keyOf(r))).map(r => {
-  const { kind, id } = r.dataset;
-  return { kind, id, url: lookup(kind, id)?.url || r.dataset.url };
+const selectedItems = () => selectableRows().filter(r => selection.has(keyOf(r)) && !inSelectedFolder(r)).map(r => {
+  const { kind, id, type } = r.dataset;
+  return { kind, id, folder: type === 'folder', url: lookup(kind, id)?.url || r.dataset.url };
 });
+
+// The tabs among the selected items, with folders opened up: { kind, id, url, open }.
+function selectedTabs(items) {
+  const out = [];
+  for (const it of items) {
+    if (it.kind === 'tab') {
+      const r = runtime.tabs.find(x => x.id === it.id);
+      out.push({ kind: 'tab', id: it.id, url: it.url, open: r?.tabId != null });
+    } else if (!it.folder) {
+      out.push({ kind: 'pinned', id: it.id, url: it.url, open: !!boundTab(it.id) });
+    } else {
+      walk(lookup('pinned', it.id)?.node.children || [], n => {
+        if (n.type === 'tab') out.push({ kind: 'pinned', id: n.id, url: boundTab(n.id)?.url || n.url, open: !!boundTab(n.id) });
+      });
+    }
+  }
+  return out;
+}
 
 function multiMenu(x, y) {
   const items = selectedItems();
@@ -343,19 +370,23 @@ function multiMenu(x, y) {
   const done = () => clearSelection();
   const pinnedIds = items.filter(i => i.kind === 'pinned').map(i => i.id);
   const tabsWord = k => k === 1 ? 'tab' : 'tabs';
+  // With a folder in the selection, only what makes sense for folders too.
+  const hasFolder = items.some(i => i.folder);
+  const tabs = selectedTabs(items);
+  const closable = tabs.filter(t => t.kind === 'tab' || t.open).map(({ kind, id }) => ({ kind, id }));
   // A split lands in the unpinned tabs unless both are pinned.
   const [a, b] = refs;
   // [moved tab, tab it joins, which side the moved one goes], keeping their order.
   const splitArgs = a?.kind === 'tab' || b?.kind !== 'tab' ? [b, a, 'right'] : [a, b, 'left'];
   const others = layout.spaces.filter(sp => sp.id !== space.id);
   showMenu(x, y, [
-    { text: `Copy ${n} links`, run: () => navigator.clipboard.writeText(items.map(i => i.url).join('\n')).then(() => toast(`${n} links copied`)) },
-    { text: `Duplicate ${n} tabs`, run: () => send({ type: 'duplicateMany', items: refs, windowId }) },
-    { text: `New folder with ${n} tabs`, run: async () => {
+    tabs.length && { text: `Copy ${tabs.length} links`, run: () => navigator.clipboard.writeText(tabs.map(t => t.url).join('\n')).then(() => toast(`${tabs.length} links copied`)) },
+    !hasFolder && { text: `Duplicate ${n} tabs`, run: () => send({ type: 'duplicateMany', items: refs, windowId }) },
+    { text: `New folder with ${n} ${hasFolder ? 'items' : 'tabs'}`, run: async () => {
       done();
       pendingRename = await send({ type: 'folderFrom', items: refs, spaceId: space.id });
     } },
-    n === 2 && { text: 'Open in split view', run: () => {
+    !hasFolder && n === 2 && { text: 'Open in split view', run: () => {
       done();
       const [item, target, side] = splitArgs;
       send({ type: 'split', item, target: { ...target, side }, windowId });
@@ -365,11 +396,16 @@ function multiMenu(x, y) {
       run: () => { done(); send({ type: 'moveMany', items: refs, target: { zone: 'space', spaceId: sp.id } }); },
     }))] : []),
     '-',
-    { text: `Close ${n} tabs`, danger: !pinnedIds.length, run: () => { done(); send({ type: 'closeMany', items: refs }); } },
-    pinnedIds.length && { text: `Delete ${pinnedIds.length} pinned ${tabsWord(pinnedIds.length)}`, danger: true, run: () => {
+    closable.length && { text: `Close ${closable.length} ${tabsWord(closable.length)}`, danger: !pinnedIds.length, run: () => { done(); send({ type: 'closeMany', items: closable }); } },
+    hasFolder && { text: `Delete ${n} items`, danger: true, run: () => {
+      if (!confirm(`Delete ${n} items, including everything in the folders?`)) return;
+      done();
+      send({ type: 'deleteMany', items: refs });
+    } },
+    !hasFolder && pinnedIds.length && { text: `Delete ${pinnedIds.length} pinned ${tabsWord(pinnedIds.length)}`, danger: true, run: () => {
       if (!confirm(`Delete ${pinnedIds.length} pinned ${tabsWord(pinnedIds.length)}?`)) return;
       done();
-      send({ type: 'deleteMany', ids: pinnedIds });
+      send({ type: 'deleteMany', items: pinnedIds.map(id => ({ kind: 'pinned', id })) });
     } },
   ]);
 }
@@ -1007,13 +1043,14 @@ function computeDrop(e) {
   if (zone === 'space') {
     return { el: zoneEl, cls: 'drop-inside', target: { zone, spaceId: zoneEl.dataset.spaceId } };
   }
-  if (drag.type === 'folder' && zone !== 'pinned') return null;
+  if ((drag.type === 'folder' || drag.folderIds?.length) && zone !== 'pinned') return null;
   if (drag.type === 'split' && zone === 'favorites') return null;
 
   const row = rowOf(e.target);
   if (row && zoneEl.contains(row)) {
     if (row.dataset.id === drag.id || drag.keys?.has(keyOf(row))) return null;
     if (drag.type === 'folder' && row.closest(`[data-folder="${drag.id}"]`)) return null;
+    if (drag.folderIds?.some(f => row.closest(`[data-folder="${f}"]`))) return null; // into itself
     // A split view takes drops only before or after it, as a whole.
     const splitEl = row.closest('.split');
     if (splitEl) {
@@ -1074,9 +1111,15 @@ document.addEventListener('dragstart', e => {
   // Dragging one of several selected tabs takes them all.
   const multi = selection.size > 1 && selection.has(keyOf(src)) && selectedItems();
   if (multi) {
-    Object.assign(d, { type: 'multi', items: multi.map(({ kind, id }) => ({ kind, id })), keys: new Set(selection) });
-    e.dataTransfer.setData('text/uri-list', multi.map(i => i.url).join('\r\n'));
-    e.dataTransfer.setData('text/plain', multi.map(i => i.url).join('\n'));
+    Object.assign(d, {
+      type: 'multi',
+      items: multi.map(({ kind, id }) => ({ kind, id })),
+      keys: new Set(selection),
+      folderIds: multi.filter(i => i.folder).map(i => i.id),
+    });
+    const urls = multi.map(i => i.url).filter(Boolean); // folders have none
+    e.dataTransfer.setData('text/uri-list', urls.join('\r\n'));
+    e.dataTransfer.setData('text/plain', urls.join('\n'));
   } else if (src.dataset.url) {
     e.dataTransfer.setData('text/uri-list', src.dataset.url);
     e.dataTransfer.setData('text/plain', src.dataset.url);

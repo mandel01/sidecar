@@ -1404,8 +1404,12 @@ const handlers = {
       else await minimize(s, id);
     }
   },
-  deleteMany: async (s, { ids }) => {
-    for (const id of ids) await deleteNode(s, id);
+  // Unpinned tabs close; pinned tabs and folders (with everything in them) go.
+  deleteMany: async (s, { items }) => {
+    for (const { kind, id } of items) {
+      if (kind === 'tab') await handlers.closeTab(s, { id });
+      else await deleteNode(s, id);
+    }
   },
   duplicateMany: async (s, { items, windowId }) => {
     for (const { kind, id } of items) {
