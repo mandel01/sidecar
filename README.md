@@ -14,7 +14,7 @@ A personal Chrome extension that brings Arc's sidebar to Chrome:
   - In the unpinned section, both tabs are archived together once neither has been used for the archive time.
   - Right-click either side for *Swap sides*, *Separate split view*, pin/unpin and move to space. Separating or swapping with Chrome's own controls updates the sidebar too.
 - **Spaces** each have their own name, emoji icon and color, and the sidebar is tinted with the space's color. Switch spaces by clicking the icons at the bottom, swiping sideways with two fingers on the sidebar, or pressing `Alt+Shift+←/→`.
-- **Favorites** appear in every space, as icons at the top.
+- **Favorites** appear in every space, as icons at the top. An open favorite whose page title has an unread count (Gmail, Instagram and the like) shows the number on its icon.
 - **Sync**: spaces, pinned tabs, folders, favorites and settings follow you to every computer signed into the same Chrome profile.
 
 ## Installing

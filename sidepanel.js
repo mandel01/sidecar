@@ -148,6 +148,14 @@ function tabRow({ kind, id, title, url, live, asleep, depth, action, actionTitle
   return row;
 }
 
+// An unread count in a page title: "Inbox (3) - Gmail", "(2) Instagram". Up to
+// three digits (or Gmail's "1,234"), so a year like "(2024)" doesn't count.
+function unreadCount(title) {
+  const m = (title || '').match(/(?:^|\s)\((\d{1,3}(?:,\d{3})*)\+?\)(?=\s|$)/);
+  const n = m ? Number(m[1].replace(/,/g, '')) : 0;
+  return n > 99 ? '99+' : n ? String(n) : '';
+}
+
 function renderFavorites() {
   els.favorites.replaceChildren(...layout.favorites.map(f => {
     const live = boundTab(f.id);
@@ -161,6 +169,8 @@ function renderFavorites() {
     const img = makeIcon(faviconFor(f.url, live));
     img.className = '';
     tile.append(img);
+    const unread = live && unreadCount(live.title);
+    if (unread) tile.append(Object.assign(document.createElement('span'), { className: 'badge', textContent: unread }));
     return tile;
   }));
 }
