@@ -1243,6 +1243,11 @@ async function commandBarData(s, windowId) {
     spaces: s.layout.spaces.map(sp => ({ id: sp.id, name: sp.name, icon: sp.icon, color: sp.color })),
     tabs,
     entries,
+    // Archived tabs can be found too; each is known by when it was archived plus its URL.
+    archived: s.runtime.archived.map(a => {
+      const space = spaceById(s, a.spaceId);
+      return { key: `${a.archivedAt} ${a.url}`, title: a.title || hostOf(a.url), url: a.url, space: space ? space.icon || space.name : '', color: space?.color };
+    }),
   };
 }
 
@@ -1257,6 +1262,14 @@ async function runBarAction(s, windowId, action, arg) {
     case 'search': return chrome.search.query({ text: arg, tabId: (await blankTab()).id });
     case 'focus-tab': return focusTab(arg);
     case 'open-entry': return activate(s, { kind: 'pinned', id: arg, windowId });
+    case 'restore-archived': {
+      // Back into the space it was archived from.
+      const i = s.runtime.archived.findIndex(a => `${a.archivedAt} ${a.url}` === arg);
+      if (i < 0) return;
+      const [a] = s.runtime.archived.splice(i, 1);
+      if (spaceById(s, a.spaceId)) await switchSpace(s, windowId, a.spaceId);
+      return chrome.tabs.create({ windowId, url: a.url, active: true });
+    }
     case 'open-page': return chrome.tabs.create({ windowId, url: arg });
     case 'reopen-closed': return chrome.sessions.restore();
     case 'next-space': return cycleSpace(s, windowId, 1);

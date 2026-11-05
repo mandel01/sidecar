@@ -1,5 +1,5 @@
 // Command bar window, opened by the "command-bar" shortcut (⌘T recommended).
-// Type a URL to go there, or words to search, find an open tab or a pinned
+// Type a URL to go there, or words to search, find an open, pinned or archived
 // tab, or run a command on the current tab. ↑/↓ choose, Enter runs, Esc or the
 // shortcut again closes. Commands that need a name (Rename, New Space) ask for
 // it in the same box. Typing also lists sites from your history and, unless
@@ -204,7 +204,11 @@ function build() {
   for (const e of data?.entries || []) {
     add(`${e.title} ${hostOf(e.url)}`, 2, { title: e.title, url: e.url, hint: `Pinned  ${e.space}`, color: e.color, cmd: { action: 'open-entry', arg: e.id } });
   }
-  found.sort((a, b) => b.sc - a.sc || a.rank - b.rank);
+  for (const a of data?.archived || []) {
+    add(`${a.title} ${hostOf(a.url)}`, 3, { title: a.title, url: a.url, hint: `Archived  ${a.space}`, color: a.color, archived: true, cmd: { action: 'restore-archived', arg: a.key } });
+  }
+  // Archived tabs come after everything still around, however well they match.
+  found.sort((a, b) => (a.rank === 3) - (b.rank === 3) || b.sc - a.sc || a.rank - b.rank);
   const matches = found.slice(0, MAX_RESULTS).map(f => f.item);
 
   // Sites to open, each only once.
@@ -224,7 +228,7 @@ function build() {
   // A command or tab whose name starts with what's typed comes before a site,
   // unless what's typed is an address.
   const lower = q.toLowerCase();
-  const leading = url ? [] : matches.filter(m => m.title.toLowerCase().startsWith(lower));
+  const leading = url ? [] : matches.filter(m => !m.archived && m.title.toLowerCase().startsWith(lower));
   return [
     ...leading,
     ...go,
