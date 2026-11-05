@@ -1008,7 +1008,7 @@ document.addEventListener('drop', e => {
     const { split, ...target } = drop.target;
     send({ type: 'split', item, target, windowId });
   } else {
-    send({ type: 'move', item, target: drop.target });
+    send({ type: 'move', item, target: drop.target, windowId });
   }
 });
 

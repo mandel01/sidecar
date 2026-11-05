@@ -1374,7 +1374,11 @@ const handlers = {
     if (f && f.node.type === 'folder') f.node.collapsed = !f.node.collapsed;
   },
 
-  move: (s, { item, target }) => move(s, item, target),
+  move: async (s, { item, target, windowId }) => {
+    await move(s, item, target);
+    // Dropped on a space icon: follow it there.
+    if (target.zone === 'space' && windowId != null) await switchSpace(s, windowId, target.spaceId);
+  },
   split: (s, { item, target, windowId }) => makeSplit(s, item, target, windowId),
   unsplit: (s, { id }) => separateSplit(s, id),
   swapSplit: (s, { id }) => swapSplit(s, id),
