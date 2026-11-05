@@ -168,6 +168,7 @@ body.dragging #favorites:empty::after {
 .row:hover { background: var(--row-hover); }
 .row.active { background: var(--row-active); box-shadow: var(--row-active-shadow); }
 .row.asleep .title, .row.asleep .favicon { opacity: 0.55; }
+.row.selected { background: color-mix(in srgb, var(--space) 24%, transparent); }
 
 .favicon { width: 16px; height: 16px; flex: none; border-radius: 3px; }
 

@@ -807,6 +807,19 @@ async function move(s, item, target) {
   scheduleAllGroups();
 }
 
+// Several items at once, kept in the order given (the sidebar's order). Each one
+// lands at the same spot, so where a landing pushes the last one down, go in reverse.
+async function moveMany(s, items, target) {
+  if (target.zone === 'space') {
+    // Pinned ones go to the end of the space's pinned tabs, unpinned ones to the top of its tabs.
+    for (const it of items.filter(i => i.kind !== 'tab')) await move(s, it, target);
+    for (const it of items.filter(i => i.kind === 'tab').reverse()) await move(s, it, target);
+    return;
+  }
+  const reverse = ['after', 'inside', 'start'].includes(target.position);
+  for (const it of reverse ? [...items].reverse() : items) await move(s, it, target);
+}
+
 // ---------------------------------------------------------------------------
 // Split view: two tabs side by side, using Chrome's own split view (Chrome 155+).
 // A pinned split is a { type: 'split', children: [left, right] } node, synced and
@@ -1376,10 +1389,37 @@ const handlers = {
     if (f && f.node.type === 'folder') f.node.collapsed = !f.node.collapsed;
   },
 
-  move: async (s, { item, target, windowId }) => {
-    await move(s, item, target);
+  move: (s, { item, target, windowId }) => handlers.moveMany(s, { items: [item], target, windowId }),
+  moveMany: async (s, { items, target, windowId }) => {
+    await moveMany(s, items, target);
     // Dropped on a space icon: follow it there.
     if (target.zone === 'space' && windowId != null) await switchSpace(s, windowId, target.spaceId);
+  },
+
+  // Several selected tabs: kind 'tab' (unpinned) or 'pinned'.
+  // Pinned ones close but stay pinned, like their − button.
+  closeMany: async (s, { items }) => {
+    for (const { kind, id } of items) {
+      if (kind === 'tab') await handlers.closeTab(s, { id });
+      else await minimize(s, id);
+    }
+  },
+  deleteMany: async (s, { ids }) => {
+    for (const id of ids) await deleteNode(s, id);
+  },
+  duplicateMany: async (s, { items, windowId }) => {
+    for (const { kind, id } of items) {
+      const rec = kind === 'tab' ? s.runtime.tabs.find(r => r.id === id) : null;
+      const tabId = rec ? rec.tabId : s.runtime.bindings[id]?.tabId;
+      const url = rec ? rec.url : findEntry(s, id)?.entry.url;
+      if (tabId != null && await chrome.tabs.duplicate(tabId).catch(() => null)) continue;
+      if (url) await chrome.tabs.create({ windowId, url, active: false }).catch(() => {});
+    }
+  },
+  folderFrom: async (s, { items, spaceId }) => {
+    const id = handlers.newFolder(s, { spaceId, parentId: null });
+    if (id) await moveMany(s, items, { zone: 'pinned', spaceId, refId: id, position: 'inside' });
+    return id;
   },
   split: (s, { item, target, windowId }) => makeSplit(s, item, target, windowId),
   unsplit: (s, { id }) => separateSplit(s, id),

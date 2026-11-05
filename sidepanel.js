@@ -33,6 +33,9 @@ let editing = false;
 let dirty = false;
 let drag = null;
 let pendingRename = null;
+// Tabs picked with ⌘/Ctrl-click or ⇧-click, as "kind:id", plus where a ⇧-click range starts.
+let selection = new Set();
+let anchor = null;
 
 // ---------------------------------------------------------------------------
 // Data
@@ -98,6 +101,7 @@ function render() {
   renderPinned(space);
   renderUnpinned(space);
   renderSpaces(space);
+  applySelection();
   if (pendingRename) {
     const row = document.querySelector(`.row[data-id="${pendingRename}"]`);
     pendingRename = null;
@@ -277,6 +281,97 @@ function renderSpaces(space) {
     else b.innerHTML = '<span class="dot"></span>';
     return b;
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Selecting several tabs: ⌘-click (Ctrl elsewhere) adds or removes one, ⇧-click
+// adds a run of them. Pinned and unpinned tabs only, not favorites, folders or
+// split views.
+
+const keyOf = row => `${row.dataset.kind}:${row.dataset.id}`;
+const selectableRows = () => [...document.querySelectorAll('#pinned .row.tab, #tab-list .row.tab')].filter(r => !r.closest('.split'));
+const isSelectable = row => row.matches('#pinned .row.tab, #tab-list .row.tab') && !row.closest('.split');
+
+function applySelection() {
+  const rows = selectableRows();
+  const keys = new Set(rows.map(keyOf));
+  for (const k of selection) if (!keys.has(k)) selection.delete(k);
+  if (anchor && !keys.has(anchor)) anchor = null;
+  for (const r of rows) r.classList.toggle('selected', selection.has(keyOf(r)));
+}
+
+function clearSelection() {
+  selection.clear();
+  anchor = null;
+  applySelection();
+}
+
+function selectClick(row, range) {
+  // The tab you're on counts as already picked, as in a file list.
+  if (!selection.size) {
+    const current = selectableRows().find(r => r.classList.contains('active'));
+    if (current && current !== row) {
+      selection.add(keyOf(current));
+      anchor = keyOf(current);
+    }
+  }
+  const rows = selectableRows();
+  const from = rows.findIndex(r => keyOf(r) === anchor);
+  if (range && from >= 0) {
+    const to = rows.indexOf(row);
+    for (const r of rows.slice(Math.min(from, to), Math.max(from, to) + 1)) selection.add(keyOf(r));
+  } else {
+    const k = keyOf(row);
+    if (selection.has(k)) selection.delete(k);
+    else selection.add(k);
+    anchor = k;
+  }
+  applySelection();
+}
+
+// The selected tabs in sidebar order, with their current URLs.
+const selectedItems = () => selectableRows().filter(r => selection.has(keyOf(r))).map(r => {
+  const { kind, id } = r.dataset;
+  return { kind, id, url: lookup(kind, id)?.url || r.dataset.url };
+});
+
+function multiMenu(x, y) {
+  const items = selectedItems();
+  const n = items.length;
+  const refs = items.map(({ kind, id }) => ({ kind, id }));
+  const space = currentSpace();
+  const done = () => clearSelection();
+  const pinnedIds = items.filter(i => i.kind === 'pinned').map(i => i.id);
+  const tabsWord = k => k === 1 ? 'tab' : 'tabs';
+  // A split lands in the unpinned tabs unless both are pinned.
+  const [a, b] = refs;
+  // [moved tab, tab it joins, which side the moved one goes], keeping their order.
+  const splitArgs = a?.kind === 'tab' || b?.kind !== 'tab' ? [b, a, 'right'] : [a, b, 'left'];
+  const others = layout.spaces.filter(sp => sp.id !== space.id);
+  showMenu(x, y, [
+    { text: `Copy ${n} links`, run: () => navigator.clipboard.writeText(items.map(i => i.url).join('\n')).then(() => toast(`${n} links copied`)) },
+    { text: `Duplicate ${n} tabs`, run: () => send({ type: 'duplicateMany', items: refs, windowId }) },
+    { text: `New folder with ${n} tabs`, run: async () => {
+      done();
+      pendingRename = await send({ type: 'folderFrom', items: refs, spaceId: space.id });
+    } },
+    n === 2 && { text: 'Open in split view', run: () => {
+      done();
+      const [item, target, side] = splitArgs;
+      send({ type: 'split', item, target: { ...target, side }, windowId });
+    } },
+    ...(others.length ? ['-', { label: 'Move to space' }, ...others.map(sp => ({
+      text: `${sp.icon || '•'}  ${sp.name}`,
+      run: () => { done(); send({ type: 'moveMany', items: refs, target: { zone: 'space', spaceId: sp.id } }); },
+    }))] : []),
+    '-',
+    { text: `Close ${n} tabs`, danger: !pinnedIds.length, run: () => { done(); send({ type: 'closeMany', items: refs }); } },
+    pinnedIds.length && { text: `Delete ${pinnedIds.length} pinned ${tabsWord(pinnedIds.length)}`, danger: true, run: () => {
+      if (!confirm(`Delete ${pinnedIds.length} pinned ${tabsWord(pinnedIds.length)}?`)) return;
+      done();
+      send({ type: 'deleteMany', ids: pinnedIds });
+    } },
+  ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -799,6 +894,11 @@ document.addEventListener('click', e => {
     send({ type, id });
     return;
   }
+  if (row && (e.metaKey || e.ctrlKey || e.shiftKey) && isSelectable(row)) {
+    selectClick(row, e.shiftKey);
+    return;
+  }
+  if (row && selection.size) clearSelection();
   if (row) {
     if (row.dataset.type === 'folder') send({ type: 'toggleFolder', id: row.dataset.id });
     else send({ type: 'activate', kind: row.dataset.kind === 'tab' ? 'tab' : 'entry', id: row.dataset.id, windowId });
@@ -842,6 +942,8 @@ document.addEventListener('contextmenu', e => {
   if (editing) return;
   e.preventDefault();
   const row = rowOf(e.target);
+  if (row && selection.size > 1 && selection.has(keyOf(row))) return multiMenu(e.clientX, e.clientY);
+  if (row && selection.size) clearSelection();
   if (row) return rowMenu(row, e.clientX, e.clientY);
   const spaceBtn = e.target.closest('.space-btn');
   if (spaceBtn) {
@@ -858,7 +960,10 @@ document.addEventListener('contextmenu', e => {
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') hideMenu();
+  if (e.key === 'Escape') {
+    hideMenu();
+    if (!editing && !els.dialog.open) clearSelection();
+  }
 });
 
 // Two-finger horizontal swipe switches spaces, like Arc.
@@ -907,7 +1012,7 @@ function computeDrop(e) {
 
   const row = rowOf(e.target);
   if (row && zoneEl.contains(row)) {
-    if (row.dataset.id === drag.id) return null;
+    if (row.dataset.id === drag.id || drag.keys?.has(keyOf(row))) return null;
     if (drag.type === 'folder' && row.closest(`[data-folder="${drag.id}"]`)) return null;
     // A split view takes drops only before or after it, as a whole.
     const splitEl = row.closest('.split');
@@ -948,10 +1053,9 @@ function computeDrop(e) {
 // cancel the drag.
 const dragName = src => [...src.querySelectorAll('.title')].map(t => t.textContent).join(' | ') || src.title.split('\n')[0];
 
-function setDragChip(e, src) {
+function setDragChip(e, src, name = dragName(src)) {
   const chip = els.dragChip;
   const icon = src.querySelector('.favicon, .folder-icon, img');
-  const name = dragName(src);
   chip.classList.toggle('folder', src.dataset.type === 'folder');
   const pill = document.createElement('div');
   const label = document.createElement('span');
@@ -967,19 +1071,26 @@ document.addEventListener('dragstart', e => {
   hideMenu();
   const d = drag = { kind: src.dataset.kind, id: src.dataset.id, type: src.dataset.type };
   e.dataTransfer.effectAllowed = 'move';
-  if (src.dataset.url) {
+  // Dragging one of several selected tabs takes them all.
+  const multi = selection.size > 1 && selection.has(keyOf(src)) && selectedItems();
+  if (multi) {
+    Object.assign(d, { type: 'multi', items: multi.map(({ kind, id }) => ({ kind, id })), keys: new Set(selection) });
+    e.dataTransfer.setData('text/uri-list', multi.map(i => i.url).join('\r\n'));
+    e.dataTransfer.setData('text/plain', multi.map(i => i.url).join('\n'));
+  } else if (src.dataset.url) {
     e.dataTransfer.setData('text/uri-list', src.dataset.url);
     e.dataTransfer.setData('text/plain', src.dataset.url);
   } else {
     e.dataTransfer.setData('text/plain', src.dataset.id);
   }
-  setDragChip(e, src);
+  setDragChip(e, src, multi ? `${multi.length} tabs` : undefined);
   // Changing layout during dragstart (body.dragging expands an empty Favorites bar)
   // makes Chrome cancel the drag, so wait a frame, and skip if it already ended.
   requestAnimationFrame(() => {
     if (drag !== d) return;
     document.body.classList.add('dragging');
     src.classList.add('drag-src');
+    if (d.keys) for (const r of selectableRows()) if (d.keys.has(keyOf(r))) r.classList.add('drag-src');
   });
 });
 
@@ -1003,8 +1114,12 @@ document.addEventListener('drop', e => {
   if (!drop) return;
   e.preventDefault();
   const item = { kind: drag.kind, id: drag.id };
+  const items = drag.items;
   endDrag();
-  if (drop.target.split) {
+  if (items) {
+    clearSelection();
+    send({ type: 'moveMany', items, target: drop.target, windowId });
+  } else if (drop.target.split) {
     const { split, ...target } = drop.target;
     send({ type: 'split', item, target, windowId });
   } else {
