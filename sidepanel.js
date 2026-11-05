@@ -805,6 +805,7 @@ function openSettingsDialog() {
       </label>
       <label class="check"><input type="checkbox" name="compactTitles"> Compact tab names (drop “ - Site name” endings)</label>
       <label class="check"><input type="checkbox" name="groupTabsBySpace"> Mirror spaces as tab groups in Chrome’s tab strip</label>
+      <label class="check"><input type="checkbox" name="googleSuggest"> Google suggestions in the command bar (sends what you type there to Google)</label>
 
       <h3>Sync</h3>
       <p>Spaces, pinned tabs, folders, favorites and settings sync through your Chrome account. Unpinned tabs stay on each computer.</p>
@@ -847,6 +848,7 @@ function openSettingsDialog() {
         archiveHours: Number(f.elements.archiveHours.value),
         compactTitles: f.elements.compactTitles.checked,
         groupTabsBySpace: f.elements.groupTabsBySpace.checked,
+        googleSuggest: f.elements.googleSuggest.checked,
       },
     });
     if (f.elements.mirrorBookmarks.checked !== !!bm.enabled) {
@@ -857,6 +859,7 @@ function openSettingsDialog() {
   f.elements.archiveHours.value = st.archiveHours;
   f.elements.compactTitles.checked = st.compactTitles;
   f.elements.groupTabsBySpace.checked = st.groupTabsBySpace;
+  f.elements.googleSuggest.checked = st.googleSuggest;
   f.elements.mirrorBookmarks.checked = !!bm.enabled;
   d.querySelector('.bookmark-status').textContent = !bm.enabled ? ''
     : bm.error ? `Bookmark error: ${bm.error}`

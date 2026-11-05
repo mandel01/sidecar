@@ -2,7 +2,8 @@
 // Type a URL to go there, or words to search, find an open tab or a pinned
 // tab, or run a command on the current tab. ↑/↓ choose, Enter runs, Esc or the
 // shortcut again closes. Commands that need a name (Rename, New Space) ask for
-// it in the same box.
+// it in the same box. Typing also lists sites from your history and, unless
+// turned off in Settings, Google's suggestions.
 
 import { COLOR_HEX, faviconFor, hostOf } from './shared.js';
 
@@ -16,6 +17,7 @@ let items = [];
 let sel = 0;
 let asking = null; // the command waiting for a name, if any
 let done = false;
+let moved = false; // picked a row with ↑/↓ since the last keystroke
 
 const spaceLabel = sp => `${sp.icon ? sp.icon + ' ' : ''}${sp.name}`;
 
@@ -94,6 +96,83 @@ function asUrl(q) {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Suggestions: sites from your history and from Google, for what's typed. They
+// arrive after each keystroke and re-render; each is kept with the text it was
+// for, and only shown while that's still what's typed.
+
+const bare = u => u.replace(/^[a-z][\w+.-]*:\/\//i, '').replace(/^www\./i, '');
+const sameUrl = (a, b) => bare(a).replace(/\/$/, '').toLowerCase() === bare(b).replace(/\/$/, '').toLowerCase();
+
+let fromHistory = { q: null, autofill: null, rows: [] };
+let fromGoogle = { q: null, sites: [], queries: [] };
+let googleOn = true;
+chrome.storage.local.get('layout').then(({ layout }) => { googleOn = layout?.settings?.googleSuggest !== false; });
+
+async function fetchHistory(q) {
+  const typed = bare(q.toLowerCase());
+  const found = (await chrome.history.search({ text: q, startTime: 0, maxResults: 200 }).catch(() => []))
+    .filter(h => /^https?:/.test(h.url));
+  const weight = h => (h.typedCount || 0) * 10 + (h.visitCount || 0);
+  // Like the address bar: the site you most likely mean, if its address starts
+  // with what's typed. Just the site, unless a path is being typed.
+  let autofill = null;
+  if (typed && !/\s/.test(q)) {
+    if (!typed.includes('/')) {
+      const sites = new Map();
+      for (const h of found) {
+        const u = new URL(h.url);
+        const host = u.hostname.replace(/^www\./, '');
+        if (!host.startsWith(typed)) continue;
+        const site = sites.get(host) || { title: host, url: `${u.origin}/`, w: 0 };
+        site.w += weight(h);
+        sites.set(host, site);
+      }
+      autofill = [...sites.values()].sort((a, b) => b.w - a.w)[0] || null;
+    } else {
+      const h = found.filter(x => bare(x.url.toLowerCase()).startsWith(typed)).sort((a, b) => weight(b) - weight(a))[0];
+      if (h) autofill = { title: bare(h.url), url: h.url };
+    }
+  }
+  const rows = found.sort((a, b) => weight(b) - weight(a)).slice(0, 6).map(h => ({ title: h.title || bare(h.url), url: h.url }));
+  if (input.value.trim() !== q || asking) return;
+  fromHistory = { q, autofill, rows };
+  render(true);
+}
+
+let googleRequest = null;
+async function fetchGoogle(q) {
+  googleRequest?.abort();
+  if (!googleOn) return;
+  const req = googleRequest = new AbortController();
+  try {
+    const url = `https://suggestqueries.google.com/complete/search?client=chrome&ie=utf-8&oe=utf-8&q=${encodeURIComponent(q)}`;
+    const res = await fetch(url, { signal: req.signal, credentials: 'omit' });
+    const [, words = [], , , extra = {}] = await res.json();
+    const types = extra['google:suggesttype'] || [];
+    const sites = [];
+    const queries = [];
+    words.forEach((w, i) => {
+      if (types[i] === 'NAVIGATION') sites.push({ title: bare(w).replace(/\/$/, ''), url: w });
+      else if (w.toLowerCase() !== q.toLowerCase()) queries.push(w);
+    });
+    if (input.value.trim() !== q || asking) return;
+    fromGoogle = { q, sites: sites.slice(0, 3), queries: queries.slice(0, 4) };
+    render(true);
+  } catch {
+    // offline, or Google changed something: the rest still works
+  }
+}
+
+let googleTimer = null;
+function suggest() {
+  const q = input.value.trim();
+  clearTimeout(googleTimer);
+  if (!q || asking) return;
+  fetchHistory(q);
+  googleTimer = setTimeout(() => fetchGoogle(q), 120);
+}
+
 // Every typed word has to appear; words at the start of the name, or of a word
 // in it, count for more.
 function score(text, words) {
@@ -126,16 +205,42 @@ function build() {
     add(`${e.title} ${hostOf(e.url)}`, 2, { title: e.title, url: e.url, hint: `Pinned  ${e.space}`, color: e.color, cmd: { action: 'open-entry', arg: e.id } });
   }
   found.sort((a, b) => b.sc - a.sc || a.rank - b.rank);
+  const matches = found.slice(0, MAX_RESULTS).map(f => f.item);
 
-  const out = [];
+  // Sites to open, each only once.
+  const opened = [];
+  const site = (title, url, hint) => {
+    if (opened.some(u => sameUrl(u, url))) return [];
+    opened.push(url);
+    return [{ title, url, hint, cmd: { action: 'open-url', arg: url } }];
+  };
+  const h = fromHistory.q === q ? fromHistory : null;
+  const g = fromGoogle.q === q && googleOn ? fromGoogle : null;
   const url = asUrl(q);
-  if (url) out.push({ title: url, url, hint: 'Open', cmd: { action: 'open-url', arg: url } });
-  out.push(...found.slice(0, MAX_RESULTS).map(f => f.item));
-  out.push({ title: `Search for “${q}”`, glyph: '⌕', hint: '', cmd: { action: 'search', arg: q } });
-  return out;
+  const go = [
+    ...(h?.autofill ? site(h.autofill.title, h.autofill.url, 'Visited') : []),
+    ...(url ? site(url, url, 'Open') : []),
+  ];
+  // A command or tab whose name starts with what's typed comes before a site,
+  // unless what's typed is an address.
+  const lower = q.toLowerCase();
+  const leading = url ? [] : matches.filter(m => m.title.toLowerCase().startsWith(lower));
+  return [
+    ...leading,
+    ...go,
+    ...matches.filter(m => !leading.includes(m)),
+    ...(h?.rows || []).flatMap(r => site(r.title, r.url, hostOf(r.url))),
+    ...(g?.sites || []).flatMap(r => site(r.title, r.url, 'Google')),
+    { title: `Search for “${q}”`, glyph: '⌕', hint: '', cmd: { action: 'search', arg: q } },
+    ...(g?.queries || []).map(w => ({ title: w, glyph: '⌕', hint: 'Search', cmd: { action: 'search', arg: w } })),
+  ];
 }
 
-function render() {
+const rowKey = it => it && `${it.cmd?.action}|${it.cmd?.arg ?? it.title}`;
+
+// keep: if a row was picked with ↑/↓, stay on it as suggestions arrive.
+function render(keep = false) {
+  const was = keep && moved ? rowKey(items[sel]) : null;
   items = asking
     ? [{ title: asking.name.replace('…', ''), glyph: asking.icon, hint: 'Enter to save · Esc to go back', cmd: null }]
     : build();
@@ -161,7 +266,8 @@ function render() {
     row.addEventListener('click', () => { select(i); choose(); });
     return row;
   }));
-  select(0);
+  const i = was ? items.findIndex(it => rowKey(it) === was) : -1;
+  select(Math.max(i, 0));
 }
 
 function select(i) {
@@ -198,15 +304,22 @@ async function choose() {
   send({ type: 'commandBarRun', windowId, action: c.action, arg: c.arg });
 }
 
-input.addEventListener('input', () => { if (!asking) render(); });
+input.addEventListener('input', () => {
+  if (asking) return;
+  moved = false;
+  render();
+  suggest();
+});
 
 addEventListener('keydown', e => {
   if (e.isComposing) return;
   if (e.key === 'ArrowDown' || (e.ctrlKey && e.key === 'n')) {
     e.preventDefault();
+    moved = true;
     select(sel + 1);
   } else if (e.key === 'ArrowUp' || (e.ctrlKey && e.key === 'p')) {
     e.preventDefault();
+    moved = true;
     select(sel - 1);
   } else if (e.key === 'Enter') {
     e.preventDefault();
@@ -230,4 +343,4 @@ render(); // a typed URL or search works before the rest arrives
 input.focus();
 const res = await chrome.runtime.sendMessage({ type: 'commandBarData', windowId });
 data = (res && res.ok && res.result) || null;
-if (!asking) render();
+if (!asking) render(true);

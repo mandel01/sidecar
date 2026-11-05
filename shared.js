@@ -25,6 +25,7 @@ export const DEFAULT_SETTINGS = {
   archiveHours: 12,        // unpinned tabs unused this long are archived; 0 = never
   compactTitles: true,     // strip " - Site Name" style suffixes from titles
   groupTabsBySpace: true,  // mirror each space as a (collapsed) tab group in the tab strip
+  googleSuggest: true,     // command bar asks Google for suggestions as you type
 };
 
 export function uid() {
