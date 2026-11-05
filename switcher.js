@@ -22,6 +22,11 @@ const REPEAT_GAP_MS = 125;
 
 const MODIFIERS = new Set(['Meta', 'Alt', 'Control']);
 
+// As SWITCHER_ROW / SWITCHER_ROWS in background.js, which opens the window at
+// a guessed size; fit() corrects it for the real title bar.
+const ROW = 36;
+const MAX_ROWS = 12;
+
 // The shortcut's letter, e.g. "⌘E" -> "KeyE". e.code, because ⌥ plus a letter
 // types a symbol on a Mac.
 let nextKey = 'KeyE';
@@ -69,6 +74,15 @@ function select(i) {
   chrome.runtime.sendMessage({ type: 'switcherSelect', tabId: items[sel].tabId, index: sel }).catch(() => {});
 }
 
+// Size the window to the rows, plus however tall the title bar really is.
+async function fit() {
+  const rows = Math.min(Math.max(items.length, 2), MAX_ROWS);
+  const height = rows * ROW + 16 + (outerHeight - innerHeight);
+  if (height === outerHeight) return;
+  const win = await chrome.windows.getCurrent();
+  await chrome.windows.update(win.id, { height }).catch(() => {});
+}
+
 function closeSelected() {
   const it = items[sel];
   if (!it || done) return;
@@ -77,6 +91,7 @@ function closeSelected() {
   list.children[sel].remove();
   if (!items.length) return finish(null);
   select(Math.min(sel, items.length - 1));
+  fit();
 }
 
 let earlySteps = 0; // presses that arrived before the list did
@@ -89,10 +104,12 @@ function step(dir, repeat) {
   select((sel + dir + items.length) % items.length);
 }
 
-function finish(tabId) {
+// back: go back to the window it was opened from (Esc), rather than leaving
+// focus wherever the window closing puts it.
+function finish(tabId, back = false) {
   if (done) return;
   done = true;
-  chrome.runtime.sendMessage(tabId == null ? { type: 'switcherClose' } : { type: 'switcherCommit', tabId });
+  chrome.runtime.sendMessage(tabId == null ? { type: 'switcherClose', back } : { type: 'switcherCommit', tabId });
 }
 
 let loaded = false;
@@ -114,7 +131,8 @@ addEventListener('keydown', e => {
     e.preventDefault();
     commit();
   } else if (e.key === 'Escape') {
-    finish(null);
+    e.preventDefault();
+    finish(null, true);
   }
 });
 
@@ -143,4 +161,5 @@ const start = at != null ? Math.min(+at, items.length - 1) : items[0]?.current &
 sel = items.length ? ((start + earlySteps) % items.length + items.length) % items.length : 0;
 loaded = true;
 render();
+fit();
 if (commitOnLoad) commit();

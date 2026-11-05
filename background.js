@@ -1068,10 +1068,11 @@ function adoptSplit(s, leftTab, rightTab) {
 
 const MRU_LIMIT = 300;
 const SWITCHER_URL = 'switcher.html';
-const SWITCHER_ROW = 36;   // keep in step with switcher.css
-const SWITCHER_ROWS = 12;  // rows shown before the list scrolls
+const SWITCHER_ROW = 36;   // keep in step with switcher.css and switcher.js
+const SWITCHER_ROWS = 12;  // rows shown before the list scrolls (also in switcher.js)
 const COMMAND_BAR_URL = 'commandbar.html';
 let switcherWindowId = null;
+let switcherFrom = null; // the window the switcher was opened from
 let commandBarWindowId = null;
 let lastNormalWindow = null; // last focused window with a Sidecar tab in it
 
@@ -1106,6 +1107,7 @@ async function openSwitcher(windowId, at) {
   const count = (await chrome.tabs.query({ windowType: 'normal' })).filter(t => !isNewTabUrl(tabUrl(t))).length;
   const height = Math.min(Math.max(count, 2), SWITCHER_ROWS) * SWITCHER_ROW + 16 + 28; // rows + padding + title bar
   const url = at == null ? SWITCHER_URL : `${SWITCHER_URL}?at=${at}`;
+  if (at == null) switcherFrom = windowId; // reopened after ⌘W: still the first window
   switcherWindowId = (await chrome.windows.create(await popupProps(url, windowId, 480, height))).id;
 }
 
@@ -1388,7 +1390,10 @@ const handlers = {
     await closeSwitcher();
     await focusTab(tabId);
   },
-  switcherClose: () => closeSwitcher(),
+  switcherClose: async (s, { back }) => {
+    await closeSwitcher();
+    if (back && switcherFrom != null) await chrome.windows.update(switcherFrom, { focused: true }).catch(() => {});
+  },
   switcherCloseTab: (s, { tabId }) => chrome.tabs.remove(tabId).catch(() => {}),
 
   commandBarData: (s, { windowId }) => commandBarData(s, windowId),
