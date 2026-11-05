@@ -28,6 +28,8 @@ export const DEFAULT_SETTINGS = {
   googleSuggest: true,     // command bar asks Google for suggestions as you type
 };
 
+export const isNewTabUrl = url => url.startsWith('chrome://newtab') || url.startsWith(chrome.runtime.getURL('newtab.html'));
+
 export function uid() {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 12);
 }

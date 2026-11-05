@@ -11,7 +11,7 @@
 // side-panel requests never interleave. The side panel only reads storage and
 // sends messages; it never writes state itself.
 
-import { uid, findNode, removeNode, walk, normalizeLayout, sameUrl, tidySplits, compactTitle, hostOf } from './shared.js';
+import { uid, findNode, removeNode, walk, normalizeLayout, sameUrl, tidySplits, compactTitle, hostOf, isNewTabUrl } from './shared.js';
 
 // Storage keys keep the old "vtabs" name: renaming them would orphan existing synced layouts.
 const META_KEY = 'vtabs_meta';
@@ -117,7 +117,6 @@ async function persist(s) {
 
 const tabUrl = t => t.url || t.pendingUrl || '';
 // Sidecar's newtab.html can show up under either URL.
-const isNewTabUrl = url => url.startsWith('chrome://newtab') || url.startsWith(chrome.runtime.getURL('newtab.html'));
 const spaceById = (s, id) => s.layout.spaces.find(sp => sp.id === id);
 
 function getWindowSpace(s, windowId) {

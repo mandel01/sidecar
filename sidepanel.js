@@ -1,7 +1,7 @@
 // Side panel UI. Reads state from chrome.storage.local, asks the background
 // worker to make every change, and re-renders whenever storage or tabs change.
 
-import { COLOR_HEX, GROUP_COLORS, ICON_PRESETS, FALLBACK_ICON, compactTitle, hostOf, faviconFor, walk } from './shared.js';
+import { COLOR_HEX, GROUP_COLORS, ICON_PRESETS, FALLBACK_ICON, compactTitle, hostOf, faviconFor, walk, isNewTabUrl } from './shared.js';
 
 const $ = id => document.getElementById(id);
 const els = {
@@ -258,13 +258,18 @@ function renderPinned(space) {
   renderNodes(space.pinned, 0, els.pinned);
 }
 
+const isBlank = r => {
+  const live = r.tabId != null ? tabs.get(r.tabId) : null;
+  return isNewTabUrl((live && (live.url || live.pendingUrl)) || r.url || '');
+};
+
 function renderUnpinned(space) {
   const recs = runtime.tabs.filter(r => r.spaceId === space.id);
   const rows = [];
   for (let i = 0; i < recs.length; i++) {
     const r = recs[i];
     if (r.splitId && recs[i + 1]?.splitId === r.splitId) rows.push(splitRow('tab', r.splitId, [recordRow(r), recordRow(recs[++i])], 0));
-    else rows.push(recordRow(r));
+    else if (!isBlank(r)) rows.push(recordRow(r)); // a blank New Tab isn't worth listing
   }
   els.tabList.replaceChildren(...rows);
 }
