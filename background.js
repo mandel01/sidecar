@@ -1325,6 +1325,14 @@ async function runBarAction(s, windowId, action, arg) {
       return chrome.tabs.create({ windowId, url: a.url, active: true });
     }
     case 'open-page': return chrome.tabs.create({ windowId, url: arg });
+    case 'screenshot': {
+      // Just the page: no tab strip, toolbar or side panel. Named like a macOS screenshot.
+      const url = await chrome.tabs.captureVisibleTab(windowId, { format: 'png' });
+      const d = new Date();
+      const p = n => String(n).padStart(2, '0');
+      const filename = `Screenshot ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} at ${p(d.getHours())}.${p(d.getMinutes())}.${p(d.getSeconds())}.png`;
+      return chrome.downloads.download({ url, filename, conflictAction: 'uniquify' });
+    }
     case 'reopen-closed': return chrome.sessions.restore();
     case 'next-space': return cycleSpace(s, windowId, 1);
     case 'prev-space': return cycleSpace(s, windowId, -1);

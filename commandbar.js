@@ -71,6 +71,7 @@ function commands() {
     ...(c.inSidecar ? others : []).map(sp => ({ name: `Move Tab to ${spaceLabel(sp)}`, icon: '↪', action: 'move-to-space', arg: sp.id, keys: 'space pin', color: sp.color, extra: true })),
     ...cmd(true, 'New Space…', '+', 'new-space', { keys: 'create', prompt: { placeholder: 'Name of the new space' } }),
     ...cmd(true, 'Clear Unpinned Tabs', '⌫', 'clear-unpinned', { keys: 'archive all today' }),
+    ...cmd(/^(https?|file):/.test(c.url || ''), 'Screenshot Page', '⎙', 'screenshot', { keys: 'capture image picture snapshot save png' }),
     ...cmd(/^(https?|file):/.test(c.url || ''), 'Video Miniplayer (Picture in Picture)', '▣', null, { keys: 'pip video float floating miniplayer pop out', local: () => pictureInPicture(c.tabId) }),
     ...cmd(true, 'Open Sidebar', '▤', null, { keys: 'side panel sidecar', local: () => chrome.sidePanel.open({ windowId }) }),
     ...cmd(true, 'New Window', '□', 'new-window'),
