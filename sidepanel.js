@@ -438,7 +438,9 @@ function startRename(row) {
   row.draggable = false;
   const input = document.createElement('input');
   input.className = 'rename';
-  input.value = item.renameValue;
+  // Start from the title as shown, so it can be edited instead of retyped.
+  const initial = item.renameValue || item.placeholder || '';
+  input.value = initial;
   input.placeholder = item.placeholder || '';
   titleEl.replaceWith(input);
   input.focus();
@@ -448,7 +450,7 @@ function startRename(row) {
     if (done) return;
     done = true;
     editing = false;
-    if (commit && input.value.trim() !== item.renameValue) {
+    if (commit && input.value.trim() !== initial) {
       send({ type: 'rename', kind: item.renameKind, id, name: input.value });
     }
     render();
@@ -665,8 +667,9 @@ function spaceMenu(x, y, space) {
 }
 
 function renameFavorite(id, item) {
-  const name = prompt('Name for this favorite (leave empty to use the page title):', item.renameValue);
-  if (name !== null) send({ type: 'rename', kind: 'entry', id, name });
+  const initial = item.renameValue || item.placeholder || '';
+  const name = prompt('Name for this favorite (leave empty to use the page title):', initial);
+  if (name !== null && name.trim() !== initial) send({ type: 'rename', kind: 'entry', id, name });
 }
 
 function editEntryUrl(id, item) {
