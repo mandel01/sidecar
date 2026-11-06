@@ -408,7 +408,7 @@ function multiMenu(x, y) {
     } },
     ...(others.length ? ['-', { label: 'Move to space' }, ...others.map(sp => ({
       text: `${sp.icon || '•'}  ${sp.name}`,
-      run: () => { done(); send({ type: 'moveMany', items: refs, target: { zone: 'space', spaceId: sp.id } }); },
+      run: () => { done(); send({ type: 'moveMany', items: refs, target: { zone: 'space', spaceId: sp.id } }).then(smartSpaceToast); },
     }))] : []),
     '-',
     closable.length && { text: `Close ${closable.length} ${tabsWord(closable.length)}`, danger: !pinnedIds.length, run: () => { done(); send({ type: 'closeMany', items: closable }); } },
@@ -561,7 +561,7 @@ function spaceTargets(kind, id, exclude) {
   if (!others.length) return [];
   return ['-', { label: 'Move to space' }, ...others.map(sp => ({
     text: `${sp.icon || '•'}  ${sp.name}`,
-    run: () => send({ type: 'moveToSpace', kind, id, spaceId: sp.id }),
+    run: () => send({ type: 'moveToSpace', kind, id, spaceId: sp.id }).then(smartSpaceToast),
   }))];
 }
 
@@ -822,6 +822,13 @@ function openSettingsDialog() {
       <label class="check"><input type="checkbox" name="groupTabsBySpace"> Mirror spaces as tab groups in Chrome’s tab strip</label>
       <label class="check"><input type="checkbox" name="googleSuggest"> Google suggestions in the command bar (sends what you type there to Google)</label>
 
+      <h3>Smart Spaces</h3>
+      <p>Links from other apps, and bookmarks opened in a new tab, open in the space where that site is pinned. Rules decide first (the top match wins), e.g. zoom.us or docs.google.com/spreadsheets. Moving such a tab to another space soon after it opens adds a rule.</p>
+      <div class="smart-rules"></div>
+      <div class="actions" style="margin-top:6px">
+        <button type="button" class="btn" data-act="add-rule">Add rule</button>
+      </div>
+
       <h3>Sync</h3>
       <p>Spaces, pinned tabs, folders, favorites and settings sync through your Chrome account. Unpinned tabs stay on each computer.</p>
       <p class="sync-status"></p>
@@ -864,6 +871,9 @@ function openSettingsDialog() {
         compactTitles: f.elements.compactTitles.checked,
         groupTabsBySpace: f.elements.groupTabsBySpace.checked,
         googleSuggest: f.elements.googleSuggest.checked,
+        smartSpaceRules: [...dlg.querySelectorAll('.smart-rule')]
+          .map(r => ({ site: r.querySelector('input').value.trim(), spaceId: r.querySelector('select').value }))
+          .filter(r => r.site),
       },
     });
     if (f.elements.mirrorBookmarks.checked !== !!bm.enabled) {
@@ -875,6 +885,20 @@ function openSettingsDialog() {
   f.elements.compactTitles.checked = st.compactTitles;
   f.elements.groupTabsBySpace.checked = st.groupTabsBySpace;
   f.elements.googleSuggest.checked = st.googleSuggest;
+  const rules = d.querySelector('.smart-rules');
+  const addRule = (site = '', spaceId = currentSpace().id) => {
+    const row = Object.assign(document.createElement('div'), { className: 'smart-rule' });
+    const input = Object.assign(document.createElement('input'), { type: 'text', value: site, placeholder: 'Site, e.g. zoom.us' });
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); }); // not Cancel, the form's first button
+    const select = document.createElement('select');
+    select.append(...layout.spaces.map(sp => new Option(`${sp.icon || '•'} ${sp.name}`, sp.id, false, sp.id === spaceId)));
+    const remove = Object.assign(document.createElement('button'), { type: 'button', className: 'btn', textContent: '×', title: 'Remove rule' });
+    remove.dataset.act = 'remove-rule';
+    row.append(input, select, remove);
+    rules.append(row);
+    return input;
+  };
+  for (const r of st.smartSpaceRules || []) addRule(r.site, r.spaceId);
   f.elements.mirrorBookmarks.checked = !!bm.enabled;
   d.querySelector('.bookmark-status').textContent = !bm.enabled ? ''
     : bm.error ? `Bookmark error: ${bm.error}`
@@ -904,6 +928,10 @@ function openSettingsDialog() {
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     } else if (act === 'import') {
       file.click();
+    } else if (act === 'add-rule') {
+      addRule().focus();
+    } else if (act === 'remove-rule') {
+      e.target.closest('.smart-rule').remove();
     } else if (act === 'shortcuts') {
       chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
     }
@@ -924,11 +952,27 @@ function openSettingsDialog() {
 }
 
 let toastTimer = null;
-function toast(text) {
-  els.toast.textContent = text;
+// action: an optional { text, run } button, e.g. Undo. Stays up longer with one.
+function toast(text, action) {
+  els.toast.replaceChildren(text);
+  if (action) {
+    const b = Object.assign(document.createElement('button'), { textContent: action.text });
+    b.addEventListener('click', () => {
+      els.toast.hidden = true;
+      action.run();
+    });
+    els.toast.append(b);
+  }
   els.toast.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { els.toast.hidden = true; }, 2600);
+  toastTimer = setTimeout(() => { els.toast.hidden = true; }, action ? 6000 : 2600);
+}
+
+// After a move that taught Smart Spaces a rule (see moveMany in background.js).
+function smartSpaceToast(res) {
+  if (!res?.sites) return;
+  const what = res.sites.length === 1 ? res.sites[0] : `${res.sites.length} sites`;
+  toast(`Smart Spaces: ${what} will open in ${res.space}`, { text: 'Undo', run: () => send({ type: 'setSmartSpaceRules', rules: res.before }) });
 }
 
 // ---------------------------------------------------------------------------
@@ -1179,12 +1223,12 @@ document.addEventListener('drop', e => {
   endDrag();
   if (items) {
     clearSelection();
-    send({ type: 'moveMany', items, target: drop.target, windowId });
+    send({ type: 'moveMany', items, target: drop.target, windowId }).then(smartSpaceToast);
   } else if (drop.target.split) {
     const { split, ...target } = drop.target;
     send({ type: 'split', item, target, windowId });
   } else {
-    send({ type: 'move', item, target: drop.target, windowId });
+    send({ type: 'move', item, target: drop.target, windowId }).then(smartSpaceToast);
   }
 });
 

@@ -116,6 +116,7 @@ In the sidebar: **click** a tab to open it, **middle-click** to close it, **doub
 ## How it maps onto Chrome
 
 - **New tabs** (`⌘T`, links, anything) join the space of the window they open in. Links open in the same space as the tab they came from.
+- **Smart Spaces:** links from other apps, and bookmarks opened in a new tab, open in the space where that site is pinned. Move one to another space soon after it opens and Sidecar remembers that as a rule; rules can also be added and removed in Settings.
 - **New Tab page:** Sidecar replaces Chrome's New Tab page with a plain blank one, so the bookmarks bar doesn't pop in and out every time you press `⌘T`. The cursor still goes to the address bar. The first time, Chrome asks whether to keep the change; click **Keep it**. You lose Chrome's own New Tab page (Google search box and shortcut tiles).
 - **Tab groups:** each space also appears as a tab group in Chrome's top tab strip. The current space's group is expanded and the others are collapsed, which keeps the strip tidy. If you click a tab from another space in the strip, the sidebar switches to that space. You can turn this off in Settings.
 - **Pinned tabs** keep their "home" URL. If a pinned tab has navigated somewhere else and you want the new page to be its home, right-click → *Set pinned URL to current page*. To type a home URL yourself, right-click → *Edit pinned URL…* (*Edit URL…* on favorites). If the tab is open, it goes to the new URL.

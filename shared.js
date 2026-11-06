@@ -26,8 +26,10 @@ export const DEFAULT_SETTINGS = {
   compactTitles: true,     // strip " - Site Name" style suffixes from titles
   groupTabsBySpace: true,  // mirror each space as a (collapsed) tab group in the tab strip
   googleSuggest: true,     // command bar asks Google for suggestions as you type
+  smartSpaceRules: [],     // Smart Spaces: [{ site: 'zoom.us', spaceId }], first match wins
 };
 
+// Sidecar's newtab.html can show up under either URL.
 export const isNewTabUrl = url => url.startsWith('chrome://newtab') || url.startsWith(chrome.runtime.getURL('newtab.html'));
 
 export function uid() {

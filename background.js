@@ -23,6 +23,10 @@ const ARCHIVE_LIMIT = 200;
 let cache = null;
 let lastLayoutKey = '';
 let reconcileUntil = 0;
+// Chrome restoring tabs after a restart looks like tabs opened from outside, so
+// Smart Spaces waits this out. Only a real browser start, not reloading Sidecar
+// (which also starts a reconcile).
+let browserStartUntil = 0;
 let queue = Promise.resolve();
 const recentlyRemoved = new Map(); // tabId -> time removed
 
@@ -116,7 +120,6 @@ async function persist(s) {
 // Lookups
 
 const tabUrl = t => t.url || t.pendingUrl || '';
-// Sidecar's newtab.html can show up under either URL.
 const spaceById = (s, id) => s.layout.spaces.find(sp => sp.id === id);
 
 function getWindowSpace(s, windowId) {
@@ -211,6 +214,56 @@ function newRecord(tab, spaceId) {
     customTitle: '',
     lastActive: Date.now(),
   };
+}
+
+// Smart Spaces: the space this URL belongs in, if any.
+// 1. A rule: its site matches that host and its subdomains ("www." ignored), and
+//    a path in it must start the URL's path. Rules are checked in order.
+// 2. Otherwise, the one space with a pinned tab on the same site. A site pinned
+//    in more than one space gives no answer.
+function smartSpaceFor(s, url) {
+  const host = siteOf(url);
+  if (!host) return null;
+  const path = new URL(url).pathname.toLowerCase();
+  for (const r of s.layout.settings.smartSpaceRules || []) {
+    const [site, ...rest] = r.site.trim().toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/^www\./, '').split('/');
+    if (!site || (host !== site && !host.endsWith(`.${site}`))) continue;
+    if (rest.length && !path.startsWith(`/${rest.join('/')}`)) continue;
+    if (spaceById(s, r.spaceId)) return r.spaceId;
+  }
+  const spaces = s.layout.spaces.filter(sp => {
+    let found = false;
+    walk(sp.pinned, n => { if (!found && n.type === 'tab' && siteOf(n.url) === host) found = true; });
+    return found;
+  });
+  return spaces.length === 1 ? spaces[0].id : null;
+}
+
+// A web page's host without "www.", or '' for anything else.
+function siteOf(url) {
+  try {
+    const u = new URL(url);
+    return /^https?:$/.test(u.protocol) ? u.hostname.toLowerCase().replace(/^www\./, '') : '';
+  } catch {
+    return '';
+  }
+}
+
+const SMART_WAIT_MS = 5000;        // how long a tab opened without its URL yet can still be sent on
+const SMART_LEARN_MS = 10 * 60000; // how long a tab opened from outside can teach a rule
+
+// Moving a tab opened from outside to another space, as the first thing done
+// with it, saves a rule for its site: that space, ahead of any other rule.
+function learnSmartSpace(s, recs, spaceId) {
+  for (const r of recs) {
+    if (!r.smartLearnUntil || !spaceId || spaceId === r.spaceId) continue;
+    const learn = Date.now() < r.smartLearnUntil;
+    delete r.smartLearnUntil;
+    const site = learn && siteOf(r.url);
+    if (!site) continue;
+    const rules = s.layout.settings.smartSpaceRules || [];
+    s.layout.settings.smartSpaceRules = [{ site, spaceId }, ...rules.filter(x => x.site.toLowerCase() !== site)];
+  }
 }
 
 function insertRecordAt(s, rec, refId, position) {
@@ -759,6 +812,7 @@ async function move(s, item, target) {
     else if (recs.length === 2) src = { recs };
   }
   if (!src) return;
+  if (src.rec || src.recs) learnSmartSpace(s, src.rec ? [src.rec] : src.recs, target.spaceId);
 
   const isFolder = src.node && src.node.type === 'folder';
   if (isFolder && (zone === 'favorites' || zone === 'unpinned')) throw new Error('Folders can only live in the pinned section.');
@@ -1402,11 +1456,18 @@ const handlers = {
   },
 
   move: (s, { item, target, windowId }) => handlers.moveMany(s, { items: [item], target, windowId }),
+  // Returns the Smart Spaces rules this taught, if any, so the sidebar can offer Undo.
   moveMany: async (s, { items, target, windowId }) => {
+    const before = s.layout.settings.smartSpaceRules || [];
     await moveMany(s, items, target);
     // Dropped on a space icon: follow it there.
     if (target.zone === 'space' && windowId != null) await switchSpace(s, windowId, target.spaceId);
+    const learned = (s.layout.settings.smartSpaceRules || []).filter(r => !before.includes(r));
+    if (!learned.length) return null;
+    const sp = spaceById(s, target.spaceId);
+    return { sites: learned.map(r => r.site), space: sp ? `${sp.icon ? sp.icon + ' ' : ''}${sp.name}` : '', before };
   },
+  setSmartSpaceRules: (s, { rules }) => { s.layout.settings.smartSpaceRules = rules; },
 
   // Several selected tabs: kind 'tab' (unpinned) or 'pinned'.
   // Pinned ones close but stay pinned, like their − button.
@@ -1472,7 +1533,7 @@ const handlers = {
   favorite: (s, { kind, id }) => move(s, { kind, id }, { zone: 'favorites', position: 'end' }),
   unfavorite: (s, { id, windowId }) =>
     move(s, { kind: 'fav', id }, { zone: 'pinned', spaceId: getWindowSpace(s, windowId), position: 'end' }),
-  moveToSpace: (s, { kind, id, spaceId }) => move(s, { kind, id }, { zone: 'space', spaceId }),
+  moveToSpace: (s, { kind, id, spaceId }) => handlers.moveMany(s, { items: [{ kind, id }], target: { zone: 'space', spaceId } }),
 
   switchSpace: (s, { windowId, spaceId }) => switchSpace(s, windowId, spaceId),
   cycleSpace: (s, { windowId, dir }) => cycleSpace(s, windowId, dir),
@@ -1534,6 +1595,10 @@ const handlers = {
   updateSettings: async (s, { settings }) => {
     const before = s.layout.settings.groupTabsBySpace;
     Object.assign(s.layout.settings, settings);
+    const rules = Array.isArray(s.layout.settings.smartSpaceRules) ? s.layout.settings.smartSpaceRules : [];
+    s.layout.settings.smartSpaceRules = rules
+      .filter(r => r && typeof r.site === 'string' && r.site.trim() && spaceById(s, r.spaceId))
+      .map(r => ({ site: r.site.trim(), spaceId: r.spaceId }));
     const hours = Number(s.layout.settings.archiveHours);
     s.layout.settings.archiveHours = Number.isFinite(hours) && hours > 0 ? hours : 0;
     if (before && !s.layout.settings.groupTabsBySpace) await ungroupAll(s);
@@ -1605,7 +1670,47 @@ chrome.tabs.onCreated.addListener(tab => mutate(async s => {
   if (Date.now() < reconcileUntil) rec.fresh = true;
   insertRecordAt(s, rec, after, after ? 'after' : 'start');
   scheduleGroups(tab.windowId);
+  // Maybe a link from another app, for Smart Spaces. New Tabs never are.
+  if (Date.now() >= browserStartUntil && !isNewTabUrl(tabUrl(tab))) setTimeout(() => smartCheck(tab.id), SMART_CHECK_MS);
 }));
+
+// Smart Spaces apply to tabs opened from outside Chrome: links from other apps,
+// bookmarks opened in a new tab. Chrome gives those an opener too (whatever tab
+// was active), so they're told apart from links clicked in Chrome by Chrome not
+// reporting a page that opened them. That report can come after onCreated,
+// hence the wait.
+const SMART_CHECK_MS = 250;
+const openedFromPage = new Map(); // tabId -> when a page opened it
+
+chrome.webNavigation?.onCreatedNavigationTarget.addListener(({ tabId }) => {
+  const now = Date.now();
+  for (const [id, t] of openedFromPage) if (now - t > 60_000) openedFromPage.delete(id);
+  openedFromPage.set(tabId, now);
+});
+
+function smartCheck(tabId) {
+  if (openedFromPage.has(tabId)) return;
+  mutate(async s => {
+    const rec = recordForTab(s, tabId);
+    const tab = rec && await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab) return;
+    rec.smartLearnUntil = Date.now() + SMART_LEARN_MS;
+    const url = tabUrl(tab);
+    if (!url || url === 'about:blank') rec.smartUntil = Date.now() + SMART_WAIT_MS; // its URL comes later
+    else await smartRoute(s, rec, tab, url);
+  });
+}
+
+// Moves a tab's record to the space Smart Spaces picks for the URL, if another.
+async function smartRoute(s, rec, tab, url) {
+  const spaceId = !isNewTabUrl(url) && smartSpaceFor(s, url);
+  if (!spaceId || spaceId === rec.spaceId) return;
+  removeRecord(s, rec.id);
+  rec.spaceId = spaceId;
+  insertRecordAt(s, rec, null, 'start');
+  if (tab.active) await switchSpace(s, tab.windowId, spaceId);
+  scheduleGroups(tab.windowId);
+}
 
 chrome.tabs.onRemoved.addListener((tabId, info) => {
   const now = Date.now();
@@ -1633,6 +1738,11 @@ chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
       if (change.url && rec.fresh && Date.now() < reconcileUntil && tryClaim(s, tab, rec)) return;
       rec.url = tab.url || rec.url;
       rec.title = tab.title || rec.title;
+      if (change.url && rec.smartUntil) {
+        const waiting = Date.now() < rec.smartUntil;
+        delete rec.smartUntil;
+        if (waiting) await smartRoute(s, rec, tab, change.url);
+      }
       return;
     }
     const eid = entryIdForTab(s, tabId);
@@ -1800,4 +1910,7 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
   mutate(() => {});
 });
-chrome.runtime.onStartup.addListener(() => mutate(() => {}));
+chrome.runtime.onStartup.addListener(() => {
+  browserStartUntil = Date.now() + RECONCILE_MS;
+  mutate(() => {});
+});
