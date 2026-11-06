@@ -1,6 +1,6 @@
-# Sidecar: Arc-style spaces for Chrome
+# Sidecar: spaces and vertical tabs for Chrome
 
-A personal Chrome extension that brings Arc's sidebar to Chrome:
+A Chrome extension inspired by the Arc Browser's sidebar:
 
 - **Vertical tabs** in Chrome's side panel, with compact names ("Inbox (3) - me@gmail.com - Gmail" shows as "Inbox (3)"). Double-click any name to rename it. Leave the name empty to go back to the page title.
 - **Pinned tabs** sit above the line and are kept until you delete them.
@@ -20,7 +20,7 @@ A personal Chrome extension that brings Arc's sidebar to Chrome:
 
 ## Installing
 
-The code lives at [github.com/mandel01/sidecar](https://github.com/mandel01/sidecar) (private). Chrome runs it straight from a local copy of the repo.
+Chrome runs Sidecar straight from a local copy of this repo.
 
 ### Before you install
 
@@ -37,14 +37,14 @@ Do these in Chrome first, in every profile you'll use Sidecar in:
 
 1. Clone the repo. The usual location is `~/Code/sidecar`, but any folder works and it can be different on each computer:
    ```
-   gh repo clone mandel01/sidecar ~/Code/sidecar
+   git clone https://github.com/mandel01/sidecar.git ~/Code/sidecar
    ```
-   (or `git clone git@github.com:mandel01/sidecar.git ~/Code/sidecar`)
+   (or `gh repo clone mandel01/sidecar ~/Code/sidecar`)
 2. Open `chrome://extensions` and turn on **Developer mode** (top right).
 3. Click **Load unpacked** and choose the cloned folder (the one that contains `manifest.json`).
 4. Click the puzzle-piece icon in the toolbar and **pin** Sidecar, then click its icon to open the sidebar.
-   `⌥⇧S` (Mac) or `Alt+Shift+S` (Windows/Linux) also opens it. On a Mac, `⌘S` is recommended because it's closer to Arc, but you have to set it yourself (see [Keyboard shortcuts](#keyboard-shortcuts)).
-5. Optional: for Arc's look, put the side panel on the left. Go to Settings → *Appearance* → *Side panel* → **Show on left** (`chrome://settings/appearance`).
+   `⌥⇧S` (Mac) or `Alt+Shift+S` (Windows/Linux) also opens it. On a Mac, `⌘S` is recommended, but you have to set it yourself (see [Keyboard shortcuts](#keyboard-shortcuts)).
+5. Optional: put the side panel on the left. Go to Settings → *Appearance* → *Side panel* → **Show on left** (`chrome://settings/appearance`).
 
 On first run, every tab you already have open goes into a "Home" space.
 
@@ -108,11 +108,11 @@ To change any of these, go to `chrome://extensions/shortcuts`, or Settings → *
 
 **Switching between recent tabs** works like `⌘Tab`. First set *Switch to a recent tab* to `⌘E` in `chrome://extensions/shortcuts` on each computer. Then hold `⌘` and press `E` to see your open tabs, most recently used first. Press `E` again to move down the list, and let go of `⌘` to switch. Press `W` (still holding `⌘`) to close the selected tab and keep going with the rest.
 
-**The command bar** is like Arc's `⌘T`. Set *Command bar* to `⌘T` in `chrome://extensions/shortcuts` on each computer, then press it to open a box at the top of the window. Type an address to go there, or words to search (both open in a new tab), find an open, pinned or archived tab (an archived one comes back in its old space), or run a command on the current tab: Copy Current URL, Duplicate, Pin, Rename, Move Tab to a space, Split View, Zoom, Screenshot Page (just the page, saved to Downloads), Video Miniplayer (Picture in Picture), Undo, and more. Use `↑`/`↓` to choose and `Enter` to run; `Esc` closes it. If you'd rather keep `⌘T` for Chrome's plain new tab, give the command bar another shortcut, or leave it unset.
+**The command bar:** set *Command bar* to `⌘T` in `chrome://extensions/shortcuts` on each computer, then press it to open a box at the top of the window. Type an address to go there, or words to search (both open in a new tab), find an open, pinned or archived tab (an archived one comes back in its old space), or run a command on the current tab: Copy Current URL, Duplicate, Pin, Rename, Move Tab to a space, Split View, Zoom, Screenshot Page (just the page, saved to Downloads), Video Miniplayer (Picture in Picture), Undo, and more. Use `↑`/`↓` to choose and `Enter` to run; `Esc` closes it. If you'd rather keep `⌘T` for Chrome's plain new tab, give the command bar another shortcut, or leave it unset.
 
 **Clearing data** from the command bar: *Clear Cookies for This Site* signs you out of the site and deletes what it has stored (cookies go for the whole domain, so on mail.google.com it's all of Google). *Clear Cache for This Site* keeps you signed in. *Clear Browsing Data…* opens Chrome's own page. Chrome's page doesn't touch Sidecar's Archive, so use *Clear Archive* for that. It also clears the Undo list, and can't be undone. *Clear All Browsing Data and Sidecar's Archive* does both at once: history, cookies, cache, site data and the downloads list for every site, plus the Archive and Undo list. It asks first. Bookmarks, passwords, autofill, open tabs and your spaces stay.
 
-**Recommended on a Mac:** set *Open the sidebar* to `⌘S`, which is closer to Arc's sidebar toggle. Chrome won't let an extension claim one of its own shortcuts by default (`⌘S` is Save Page), so you have to set it by hand in `chrome://extensions/shortcuts`. Do this on each computer, and again whenever you remove and reinstall Sidecar.
+**Recommended on a Mac:** set *Open the sidebar* to `⌘S`. Chrome won't let an extension claim one of its own shortcuts by default (`⌘S` is Save Page), so you have to set it by hand in `chrome://extensions/shortcuts`. Do this on each computer, and again whenever you remove and reinstall Sidecar.
 
 In the sidebar: **click** a tab to open it, **middle-click** to close it, **double-click** its name to rename (folders: right-click → *Rename*), and **right-click** for more options (copy link, move to space, "Set pinned URL to current page", and so on).
 
@@ -127,9 +127,9 @@ In the sidebar: **click** a tab to open it, **middle-click** to close it, **doub
 - **Multiple windows:** each window can be on a different space.
 - **Split views made in Chrome** (for example right-click a tab → split view) show up as a split in the sidebar when both tabs are in the same section of the same space. A pinned tab split with a tab it opened (say, *Open link in split view*) becomes a pinned split; drag it below the line if you don't want to keep it. A pinned tab split with any other unpinned tab stays as two separate rows.
 
-## Floating video player (Arc's miniplayer)
+## Floating video player
 
-Arc moved a playing video into a floating miniplayer on its own when you switched tabs. Sidecar can't do that, but Chrome's picture-in-picture comes close. You start it yourself, once for each video you want to float:
+Chrome's picture-in-picture floats a video in a small window while you switch tabs. Sidecar can't start it on its own when you leave a tab, so you start it yourself, once for each video you want to float:
 
 1. Play a video or audio file with sound in Chrome.
 2. Click the **Media controls** button <img src="docs/media-controls.svg" height="18" alt="Media controls button"> in Chrome's toolbar, at the top right. It only appears while something is playing.
@@ -139,9 +139,9 @@ The video moves to a small window that stays in front of all your other windows,
 
 If you use the [command bar](#keyboard-shortcuts), type *Video* instead: it floats the video playing in the current tab.
 
-## Profiles (Arc's separate logins)
+## Separate logins per space
 
-Chrome extensions can't keep separate cookies or logins per space, so the closest match to Arc profiles is **Chrome profiles**, which is what you planned:
+Chrome extensions can't keep separate cookies or logins per space. Use **Chrome profiles** instead:
 
 - Create a profile per identity, for example *Personal* and *Work*, from the profile icon → **Add**.
 - Install Sidecar in each profile with **Load unpacked**, pointing at the same folder.

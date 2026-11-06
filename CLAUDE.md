@@ -1,6 +1,6 @@
 # Sidecar
 
-Personal Chrome extension (Arc-style spaces and vertical tabs), loaded unpacked from a git clone on each computer. See README.md.
+Personal Chrome extension (Arc-inspired spaces and vertical tabs), loaded unpacked from a git clone on each computer. See README.md.
 
 ## Versioning
 
