@@ -6,7 +6,7 @@ A personal Chrome extension that brings Arc's sidebar to Chrome:
 - **Pinned tabs** sit above the line and are kept until you delete them.
   - Open: hover shows **−**, which closes the tab but keeps it pinned.
   - Not open: hover shows **×**, which deletes the pinned tab.
-- **Unpinned tabs** sit below the line and are archived after **12 hours** without use. You can change the time in Settings. To get one back, open the archive (box icon, bottom left).
+- **Unpinned tabs** sit below the line and are archived after **12 hours** without use. You can change the time in Settings. Closing one (× or `⌘W`) archives it too, unless it was open less than **30 seconds**, so quick lookups don't clutter the archive. To get one back, open the archive (box icon, bottom left).
 - **Folders** in the pinned section can be nested. Create one with the folder button in the header or from the right-click menu. Click a folder to open or close it. A closed folder still lists any of its tabs that are open, and its icon shows two gray dots.
 - **Drag and drop** works for tabs and folders: reorder them, drop them into folders, drag across the line to pin or unpin, drag up to Favorites, or drop onto a space icon at the bottom to move them to that space and switch to it.
 - **Split view** shows two tabs side by side, using Chrome's own split view (Chrome 155 or newer). Drag a tab onto the **middle** of another tab. The half of the row you drop on is the side it goes on, and dropping near a row's top or bottom edge still just reorders. A split shows as one row with both tabs and drags as one piece.

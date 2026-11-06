@@ -18,7 +18,8 @@ const META_KEY = 'vtabs_meta';
 const CHUNK_PREFIX = 'vtabs_c';
 const CHUNK_SIZE = 7000;          // chrome.storage.sync allows 8192 bytes per item
 const RECONCILE_MS = 60_000;      // after a browser restart, re-match restored tabs for this long
-const ARCHIVE_LIMIT = 200;
+const ARCHIVE_LIMIT = 500;
+const ARCHIVE_MIN_OPEN_MS = 30_000; // closed tabs open for less than this aren't archived
 
 let cache = null;
 let lastLayoutKey = '';
@@ -217,6 +218,7 @@ function newRecord(tab, spaceId) {
     title: tab ? tab.title || '' : '',
     customTitle: '',
     lastActive: Date.now(),
+    openedAt: Date.now(),
   };
 }
 
@@ -371,16 +373,29 @@ async function closeTabs(s, ids) {
   await chrome.tabs.remove(live.map(t => t.id)).catch(() => {});
 }
 
-async function archiveRecords(s, recs) {
+// Adds records to the top of the archive. A URL is listed once: archiving it
+// again moves it to the top.
+function addToArchive(s, recs) {
   const now = Date.now();
   for (const r of recs) {
-    removeRecord(s, r.id);
-    if (r.url && !isNewTabUrl(r.url)) {
-      s.runtime.archived.unshift({ url: r.url, title: r.customTitle || r.title, spaceId: r.spaceId, archivedAt: now });
-    }
+    if (!r.url || isNewTabUrl(r.url)) continue;
+    s.runtime.archived = s.runtime.archived.filter(a => a.url !== r.url);
+    s.runtime.archived.unshift({ url: r.url, title: r.customTitle || r.title, spaceId: r.spaceId, archivedAt: now });
   }
   s.runtime.archived.length = Math.min(s.runtime.archived.length, ARCHIVE_LIMIT);
+}
+
+async function archiveRecords(s, recs) {
+  for (const r of recs) removeRecord(s, r.id);
+  addToArchive(s, recs);
   await closeTabs(s, recs.map(r => r.tabId));
+}
+
+// An unpinned tab closed by hand goes to the archive too, unless it was only
+// open briefly (a quick lookup, a sign-in popup). Records from before openedAt
+// existed count as open long enough.
+function archiveClosed(s, rec) {
+  if (rec && Date.now() - (rec.openedAt || 0) >= ARCHIVE_MIN_OPEN_MS) addToArchive(s, [rec]);
 }
 
 // ---------------------------------------------------------------------------
@@ -1361,7 +1376,7 @@ async function runBarAction(s, windowId, action, arg) {
     case 'duplicate': return chrome.tabs.duplicate(id);
     case 'close-tab':
       // Off the sidebar first, so undoing puts it back.
-      if (rec) removeRecord(s, rec.id);
+      if (rec) archiveClosed(s, removeRecord(s, rec.id));
       else if (eid) delete s.runtime.bindings[eid];
       return closeTabs(s, [id]);
     case 'zoom-in':
@@ -1538,6 +1553,11 @@ async function recordUndo(s, label, fn, closedTabId = null) {
   tidy(s); // as persist() will, so the copy matches what's saved
   const after = undoState(s);
   if (deepEqual(before, after)) return result;
+  // The archive is the biggest part of a copy, so it's kept only when it changed.
+  if (deepEqual(before.archived, after.archived)) {
+    delete before.archived;
+    delete after.archived;
+  }
   const liveAfter = await liveTabs();
   const closed = [...heldTabs(before)].filter(id => (liveBefore.has(id) || id === closedTabId) && !liveAfter.has(id));
   // A blank New Tab opened in passing (closing the last tab of a space) stays.
@@ -1631,7 +1651,7 @@ async function applyUndo(s, { before, after, closed, opened }, windowId) {
   s.layout.settings.smartSpaceRules = st.rules;
   s.runtime.tabs = st.tabs;
   s.runtime.bindings = st.bindings;
-  s.runtime.archived = st.archived.map(({ id, ...a }) => a).slice(0, ARCHIVE_LIMIT);
+  if (st.archived) s.runtime.archived = st.archived.map(({ id, ...a }) => a).slice(0, ARCHIVE_LIMIT);
 
   // An open tab the undo would leave out of the sidebar stays, as a new unpinned tab.
   for (const id of heldTabs(now)) {
@@ -1764,6 +1784,7 @@ const handlers = {
   deleteEntry: (s, m) => deleteNode(s, m.id),
   closeTab: async (s, m) => {
     const r = removeRecord(s, m.id);
+    archiveClosed(s, r);
     if (r) await closeTabs(s, [r.tabId]);
   },
   newTab: (s, m) => chrome.tabs.create({ windowId: m.windowId }),
@@ -2107,7 +2128,7 @@ chrome.tabs.onRemoved.addListener((tabId, info) => {
       if (rec) {
         // Closing a whole window (or quitting) keeps its tabs as sleeping entries.
         if (info.isWindowClosing) rec.tabId = null;
-        else removeRecord(s, rec.id);
+        else archiveClosed(s, removeRecord(s, rec.id));
       }
     }, tabId);
   });

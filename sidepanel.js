@@ -779,7 +779,7 @@ function openArchiveDialog() {
   const list = runtime.archived;
   const d = openDialog(`
     <h2>Archived tabs</h2>
-    <p>Unpinned tabs that went unused for ${layout.settings.archiveHours || '∞'} hours, or were cleared. Click one to reopen it.</p>
+    <p>Unpinned tabs you closed, cleared or left unused for ${layout.settings.archiveHours || '∞'} hours. Tabs open less than 30 seconds aren't kept. Click one to reopen it.</p>
     <div class="archive-list"></div>
     <div class="actions">
       ${list.length ? '<button class="btn danger" data-act="clear">Clear archive</button>' : ''}
