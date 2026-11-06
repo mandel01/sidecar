@@ -1027,7 +1027,23 @@ document.addEventListener('click', e => {
   } else if (id === 'add-space-btn') openSpaceDialog(null);
   else if (id === 'settings-btn') openSettingsDialog();
   else if (id === 'archive-btn') openArchiveDialog();
+  else if (id === 'undo-btn') undo();
 });
+
+// ---------------------------------------------------------------------------
+// Undo (see background.js): the button, ⌘Z / Ctrl+Z while the sidebar has focus,
+// and the command bar all step back through the same list.
+
+const UNDO_KEY = /Mac/.test(navigator.platform) ? '⌘Z' : 'Ctrl+Z';
+
+function showUndoLabel(label) {
+  $('undo-btn').title = label ? `Undo: ${label} (${UNDO_KEY})` : `Undo: reopen the last closed tab (${UNDO_KEY})`;
+}
+
+function undo() {
+  hideMenu();
+  send({ type: 'undo', windowId }).then(text => text && toast(text), () => {});
+}
 
 // Middle-click closes, like a normal tab strip.
 document.addEventListener('auxclick', e => {
@@ -1071,6 +1087,12 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     hideMenu();
     if (!editing && !els.dialog.open) clearSelection();
+  }
+  // Typing in a box keeps its own undo.
+  const typing = editing || els.dialog.open || e.target.closest?.('input, textarea, [contenteditable]');
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z' && !typing) {
+    e.preventDefault();
+    undo();
   }
 });
 
@@ -1259,7 +1281,9 @@ async function init() {
   windowId = (await chrome.windows.getCurrent()).id;
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local') scheduleRefresh();
+    if (area === 'session' && changes.undoLabel) showUndoLabel(changes.undoLabel.newValue);
   });
+  chrome.storage.session.get('undoLabel').then(({ undoLabel }) => showUndoLabel(undoLabel)).catch(() => showUndoLabel(''));
   for (const ev of [chrome.tabs.onUpdated, chrome.tabs.onActivated, chrome.tabs.onRemoved,
     chrome.tabs.onCreated, chrome.tabs.onAttached, chrome.tabs.onDetached]) {
     ev.addListener(scheduleRefresh);

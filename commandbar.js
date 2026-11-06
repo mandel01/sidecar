@@ -48,7 +48,7 @@ function commands() {
   return [
     ...cmd(c.page, 'Copy Current URL', '⎘', null, { keys: 'link clipboard', local: () => navigator.clipboard.writeText(c.url) }),
     ...cmd(c.page, 'Duplicate Current Tab', '⧉', 'duplicate'),
-    ...cmd(true, 'Reopen Last Closed Tab', '↺', 'reopen-closed', { keys: 'restore undo' }),
+    ...cmd(true, c.undo ? `Undo: ${c.undo}` : 'Undo (Reopen Last Closed Tab)', '↶', 'undo', { keys: 'undo reopen last closed tab restore' }),
     ...cmd(c.inSidecar && !c.favorite, c.pinned ? 'Unpin Tab' : 'Pin Tab', c.pinned ? '⊖' : '⊕', 'toggle-pin'),
     ...cmd(c.inSidecar && !c.split, c.favorite ? 'Remove from Favorites' : 'Add to Favorites', c.favorite ? '☆' : '★', 'toggle-favorite', { keys: 'favorite' }),
     ...cmd(c.inSidecar && !c.split, 'Rename Tab…', '✎', 'rename', { prompt: { placeholder: 'New name (leave empty to use the page title)', value: c.title } }),

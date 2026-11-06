@@ -103,9 +103,13 @@ async function load() {
   return s;
 }
 
-async function persist(s) {
+function tidy(s) {
   for (const sp of s.layout.spaces) tidySplits(sp.pinned);
   tidySplitRecords(s);
+}
+
+async function persist(s) {
+  tidy(s);
   const key = layoutKey(s.layout);
   if (key !== lastLayoutKey) {
     s.layout.rev = Date.now();
@@ -1293,6 +1297,7 @@ async function commandBarData(s, windowId) {
       movedFromPin: !!entry && !sameUrl(entry.url, url),
       splitWith: splitWith ? { tabId: splitWith.tabId, title: splitWith.title } : null,
       spaceId: getWindowSpace(s, windowId),
+      undo: (await undoList()).at(-1)?.label || '',
     },
     spaces: s.layout.spaces.map(sp => ({ id: sp.id, name: sp.name, icon: sp.icon, color: sp.color })),
     tabs,
@@ -1300,7 +1305,7 @@ async function commandBarData(s, windowId) {
     // Archived tabs can be found too; each is known by when it was archived plus its URL.
     archived: s.runtime.archived.map(a => {
       const space = spaceById(s, a.spaceId);
-      return { key: `${a.archivedAt} ${a.url}`, title: a.title || hostOf(a.url), url: a.url, space: space ? space.icon || space.name : '', color: space?.color };
+      return { key: archiveKey(a), title: a.title || hostOf(a.url), url: a.url, space: space ? space.icon || space.name : '', color: space?.color };
     }),
   };
 }
@@ -1318,7 +1323,7 @@ async function runBarAction(s, windowId, action, arg) {
     case 'open-entry': return activate(s, { kind: 'pinned', id: arg, windowId });
     case 'restore-archived': {
       // Back into the space it was archived from.
-      const i = s.runtime.archived.findIndex(a => `${a.archivedAt} ${a.url}` === arg);
+      const i = s.runtime.archived.findIndex(a => archiveKey(a) === arg);
       if (i < 0) return;
       const [a] = s.runtime.archived.splice(i, 1);
       if (spaceById(s, a.spaceId)) await switchSpace(s, windowId, a.spaceId);
@@ -1333,7 +1338,7 @@ async function runBarAction(s, windowId, action, arg) {
       const filename = `Screenshot ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} at ${p(d.getHours())}.${p(d.getMinutes())}.${p(d.getSeconds())}.png`;
       return chrome.downloads.download({ url, filename, conflictAction: 'uniquify' });
     }
-    case 'reopen-closed': return chrome.sessions.restore();
+    case 'undo': return undo(s, windowId);
     case 'next-space': return cycleSpace(s, windowId, 1);
     case 'prev-space': return cycleSpace(s, windowId, -1);
     case 'focus-space': return switchSpace(s, windowId, arg);
@@ -1354,7 +1359,11 @@ async function runBarAction(s, windowId, action, arg) {
     case 'back': return chrome.tabs.goBack(id).catch(() => {});
     case 'forward': return chrome.tabs.goForward(id).catch(() => {});
     case 'duplicate': return chrome.tabs.duplicate(id);
-    case 'close-tab': return closeTabs(s, [id]);
+    case 'close-tab':
+      // Off the sidebar first, so undoing puts it back.
+      if (rec) removeRecord(s, rec.id);
+      else if (eid) delete s.runtime.bindings[eid];
+      return closeTabs(s, [id]);
     case 'zoom-in':
     case 'zoom-out': {
       const z = await chrome.tabs.getZoom(id);
@@ -1393,6 +1402,358 @@ async function runBarAction(s, windowId, action, arg) {
 }
 
 // ---------------------------------------------------------------------------
+// Undo. Each action from the sidebar, the command bar or a shortcut, and each
+// tab closed in Chrome, keeps a copy of the state from just before and just
+// after it. Undoing is a three-way merge, like git revert: what the action
+// changed goes back, and whatever changed since (titles, new tabs, edits from
+// another computer) stays. Tabs it closed reopen from Chrome's recently closed
+// list, so they keep their history, and tabs it opened close. Newest first, this
+// computer only, kept in storage.session so a browser restart clears it.
+
+const UNDO_LIMIT = 20;
+const UNDO_BYTES = 4_000_000; // of storage.session's 10 MB
+let undoStack = null;
+
+const archiveKey = a => `${a.archivedAt} ${a.url}`;
+
+function undoState(s) {
+  return structuredClone({
+    spaces: s.layout.spaces,
+    favorites: s.layout.favorites,
+    rules: s.layout.settings.smartSpaceRules || [],
+    tabs: s.runtime.tabs,
+    bindings: s.runtime.bindings,
+    archived: s.runtime.archived.map(a => ({ ...a, id: archiveKey(a) })),
+  });
+}
+
+function heldTabs(st) {
+  const ids = new Set();
+  for (const r of st.tabs) if (r.tabId != null) ids.add(r.tabId);
+  for (const b of Object.values(st.bindings)) ids.add(b.tabId);
+  return ids;
+}
+
+// Split views as [leftTabId, rightTabId], both open.
+function splitPairs(st) {
+  const bySplit = {};
+  for (const r of st.tabs) if (r.splitId) (bySplit[r.splitId] ||= []).push(r.tabId);
+  const pairs = Object.values(bySplit).filter(p => p.length === 2);
+  for (const sp of st.spaces) {
+    walk(sp.pinned, n => {
+      if (n.type === 'split' && n.children.length === 2) pairs.push(n.children.map(c => st.bindings[c.id]?.tabId));
+    });
+  }
+  return pairs.filter(p => p.every(id => id != null));
+}
+
+const liveTabs = async () => new Map((await chrome.tabs.query({}).catch(() => [])).map(t => [t.id, t]));
+
+const isPlain = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+function deepEqual(a, b) {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a);
+  return ka.length === Object.keys(b).length && ka.every(k => Object.hasOwn(b, k) && deepEqual(a[k], b[k]));
+}
+
+// Whether something is there after the undo: as before the action, unless it
+// came or went since.
+const keepAfterUndo = (inB, inA, inN) => (inA === inN ? inB : inN);
+
+// b: before the action, a: just after it, n: now.
+function merge3(b, a, n) {
+  if (deepEqual(n, a)) return structuredClone(b);
+  if (deepEqual(b, a)) return n;
+  if (isPlain(b) && isPlain(a) && isPlain(n)) {
+    const out = {};
+    for (const k of new Set([...Object.keys(b), ...Object.keys(a), ...Object.keys(n)])) {
+      const v = mergeItem(k, new Map(Object.entries(b)), new Map(Object.entries(a)), new Map(Object.entries(n)));
+      if (v !== undefined) out[k] = v;
+    }
+    return out;
+  }
+  const keyed = v => Array.isArray(v) && v.every(x => isPlain(x) && typeof x.id === 'string');
+  if (keyed(b) && keyed(a) && keyed(n)) return mergeList(b, a, n);
+  return n;
+}
+
+function mergeItem(k, mb, ma, mn) {
+  const inB = mb.has(k), inA = ma.has(k), inN = mn.has(k);
+  if (!keepAfterUndo(inB, inA, inN)) return undefined;
+  if (!inB) return mn.get(k);
+  if (!inN) return structuredClone(mb.get(k));
+  return inA ? merge3(mb.get(k), ma.get(k), mn.get(k)) : mn.get(k);
+}
+
+// Lists of things with ids (spaces, pinned trees, records). Order: as before the
+// action, unless it has been reordered since.
+function mergeList(b, a, n) {
+  const byId = l => new Map(l.map(x => [x.id, x]));
+  const mb = byId(b), ma = byId(a), mn = byId(n);
+  const out = new Map();
+  for (const id of new Set([...mb.keys(), ...ma.keys(), ...mn.keys()])) {
+    const v = mergeItem(id, mb, ma, mn);
+    if (v !== undefined) out.set(id, v);
+  }
+  const ids = l => l.map(x => x.id);
+  const reordered = !deepEqual(ids(a).filter(id => mn.has(id)), ids(n).filter(id => ma.has(id)));
+  const [first, second] = reordered ? [ids(n), ids(b)] : [ids(b), ids(n)];
+  const order = first.filter(id => out.has(id));
+  let at = -1;
+  for (const id of second) {
+    const i = order.indexOf(id);
+    if (i >= 0) at = i;
+    else if (out.has(id)) order.splice(++at, 0, id);
+  }
+  return order.map(id => out.get(id));
+}
+
+async function undoList() {
+  if (!undoStack) undoStack = (await chrome.storage.session.get('undo').catch(() => ({}))).undo || [];
+  return undoStack;
+}
+
+async function saveUndo() {
+  const stack = await undoList();
+  let bytes = stack.reduce((n, e) => n + e.size, 0);
+  while (stack.length > UNDO_LIMIT || (stack.length > 1 && bytes > UNDO_BYTES)) bytes -= stack.shift().size;
+  await chrome.storage.session.set({ undo: stack, undoLabel: stack.at(-1)?.label || '' })
+    .catch(e => console.warn('[sidecar] could not save undo', e));
+}
+
+async function clearUndo() {
+  undoStack = [];
+  await saveUndo();
+}
+
+// Runs an action, keeping what's needed to undo it. closedTabId: a tab Chrome
+// already closed, which the action is tidying up after.
+async function recordUndo(s, label, fn, closedTabId = null) {
+  if (!label) return fn(s);
+  const before = undoState(s);
+  const liveBefore = await liveTabs();
+  const result = await fn(s);
+  tidy(s); // as persist() will, so the copy matches what's saved
+  const after = undoState(s);
+  if (deepEqual(before, after)) return result;
+  const liveAfter = await liveTabs();
+  const closed = [...heldTabs(before)].filter(id => (liveBefore.has(id) || id === closedTabId) && !liveAfter.has(id));
+  // A blank New Tab opened in passing (closing the last tab of a space) stays.
+  const opened = [...liveAfter.values()].filter(t => !liveBefore.has(t.id) && !isPopupTab(t) && !isNewTabUrl(tabUrl(t))).map(t => t.id);
+  const entry = { label, at: Date.now(), before, after, closed, opened };
+  entry.size = JSON.stringify(entry).length;
+  (await undoList()).push(entry);
+  await saveUndo();
+  return result;
+}
+
+// A recently closed tab with this URL, reopened with its history; otherwise a new tab.
+async function reopenTab(url, windowId, used) {
+  const recent = await chrome.sessions.getRecentlyClosed().catch(() => []);
+  const hit = recent.map(e => e.tab).find(t => t && t.sessionId && !used.has(t.sessionId) && sameUrl(t.url, url));
+  if (hit) {
+    used.add(hit.sessionId);
+    const restored = await chrome.sessions.restore(hit.sessionId).catch(() => null);
+    if (restored?.tab) return restored.tab.id;
+  }
+  const t = await chrome.tabs.create({ windowId, url: url || undefined, active: false }).catch(() => null);
+  return t ? t.id : null;
+}
+
+const isOurPopup = e => e.window && e.window.tabs.every(t => [SWITCHER_URL, COMMAND_BAR_URL].some(p => (t.url || '').startsWith(chrome.runtime.getURL(p))));
+
+// Returns what to tell the user.
+async function undo(s, windowId) {
+  if (windowId == null) windowId = (await chrome.windows.getLastFocused().catch(() => null))?.id;
+  const stack = await undoList();
+  const entry = stack.at(-1);
+  // A window closed since isn't something Sidecar keeps: it comes back first, as
+  // Chrome's own reopen would bring it. With nothing to undo, so does a tab.
+  const recent = (await chrome.sessions.getRecentlyClosed().catch(() => [])).find(e => !isOurPopup(e));
+  if (recent && (entry ? recent.window && recent.lastModified * 1000 > entry.at : true)) {
+    await chrome.sessions.restore((recent.window || recent.tab).sessionId);
+    return recent.window ? 'Closed Window Reopened' : 'Closed Tab Reopened';
+  }
+  if (!entry) return 'Nothing to Undo';
+  stack.pop();
+  await saveUndo();
+  await applyUndo(s, entry, windowId);
+  return `${entry.label} Undone`;
+}
+
+async function applyUndo(s, { before, after, closed, opened }, windowId) {
+  const now = undoState(s);
+  const st = {};
+  for (const k of Object.keys(before)) st[k] = merge3(before[k], after[k], now[k]);
+  if (!st.spaces.length) st.spaces = now.spaces;
+
+  // Each pinned entry and each tab in one place only.
+  const seen = new Set();
+  const dedupe = nodes => nodes.filter(n => {
+    if (seen.has(n.id)) return false;
+    seen.add(n.id);
+    if (n.children) n.children = dedupe(n.children);
+    return true;
+  });
+  for (const sp of st.spaces) sp.pinned = dedupe(sp.pinned);
+  st.favorites = dedupe(st.favorites);
+
+  // Tabs the action opened close again, along with whatever has listed them since.
+  const openedSet = new Set(opened);
+  const beforeRec = new Map(before.tabs.map(r => [r.id, r]));
+  st.tabs = st.tabs.filter(r => !openedSet.has(r.tabId) || beforeRec.get(r.id)?.tabId === r.tabId);
+  for (const [eid, b] of Object.entries(st.bindings)) {
+    if (openedSet.has(b.tabId) && before.bindings[eid]?.tabId !== b.tabId) delete st.bindings[eid];
+  }
+
+  const live = await liveTabs();
+  const held = new Set();
+  const reopen = [];
+  const closedSet = new Set(closed);
+  for (const r of st.tabs) {
+    if (r.tabId == null) continue;
+    if (held.has(r.tabId)) r.tabId = null;
+    else if (live.has(r.tabId)) held.add(r.tabId);
+    else if (closedSet.has(r.tabId)) reopen.push({ url: r.url, bind: id => { r.tabId = id; } });
+    else r.tabId = null;
+  }
+  for (const [eid, b] of Object.entries(st.bindings)) {
+    if (held.has(b.tabId)) delete st.bindings[eid];
+    else if (live.has(b.tabId)) held.add(b.tabId);
+    else if (closedSet.has(b.tabId)) reopen.push({ url: b.url, bind: id => { b.tabId = id; } });
+    else delete st.bindings[eid];
+  }
+
+  s.layout.spaces = st.spaces;
+  s.layout.favorites = st.favorites;
+  s.layout.settings.smartSpaceRules = st.rules;
+  s.runtime.tabs = st.tabs;
+  s.runtime.bindings = st.bindings;
+  s.runtime.archived = st.archived.map(({ id, ...a }) => a).slice(0, ARCHIVE_LIMIT);
+
+  // An open tab the undo would leave out of the sidebar stays, as a new unpinned tab.
+  for (const id of heldTabs(now)) {
+    const t = live.get(id);
+    if (t && !held.has(id) && !openedSet.has(id)) insertRecordAt(s, newRecord(t, getWindowSpace(s, t.windowId)), null, 'start');
+  }
+  await closeTabs(s, opened.filter(id => live.has(id) && !held.has(id)));
+
+  const used = new Set();
+  for (const h of reopen) {
+    const id = await reopenTab(h.url, windowId, used);
+    if (id != null) h.bind(id);
+  }
+  // Bindings may point at entries that no longer exist: those tabs become unpinned tabs.
+  pruneRuntime(s);
+
+  // Chrome's split views follow.
+  if (canSplit()) {
+    const key = p => p.join(' ');
+    const wanted = splitPairs({ spaces: s.layout.spaces, tabs: s.runtime.tabs, bindings: s.runtime.bindings });
+    const had = splitPairs(after);
+    const wantedKeys = new Set(wanted.map(key));
+    const hadKeys = new Set(had.map(key));
+    for (const [l] of had.filter(p => !wantedKeys.has(key(p)) && !wantedKeys.has(key([...p].reverse())))) {
+      const t = await chrome.tabs.get(l).catch(() => null);
+      if (t && t.splitViewId > NO_SPLIT) await chrome.tabs.unsplit(t.splitViewId).catch(() => {});
+    }
+    for (const [l, r] of wanted.filter(p => !hadKeys.has(key(p)))) await ensureSplit(l, r).catch(() => {});
+  }
+
+  // Something going back to another space: follow it there, as moving it did.
+  const where = st => {
+    const m = new Map(st.tabs.map(r => [r.id, { spaceId: r.spaceId, tabId: r.tabId }]));
+    for (const sp of st.spaces) walk(sp.pinned, n => { if (n.type === 'tab') m.set(n.id, { spaceId: sp.id, tabId: st.bindings[n.id]?.tabId }); });
+    return m;
+  };
+  const was = where(now);
+  const back = [...where({ spaces: s.layout.spaces, tabs: s.runtime.tabs, bindings: s.runtime.bindings })]
+    .find(([id, w]) => was.has(id) && was.get(id).spaceId !== w.spaceId)?.[1];
+  if (back && windowId != null) {
+    await switchSpace(s, windowId, back.spaceId);
+    const t = back.tabId != null && await chrome.tabs.get(back.tabId).catch(() => null);
+    if (t && t.windowId === windowId) await chrome.tabs.update(t.id, { active: true }).catch(() => {});
+  }
+  scheduleAllGroups();
+}
+
+// What each undoable message is called, from the state before it runs. Short,
+// so "… Undone" fits in the sidebar's toast.
+const tabsWord = n => (n === 1 ? 'Tab' : 'Tabs');
+const toSpace = (s, spaceId) => `Move to ${spaceById(s, spaceId)?.name || 'Space'}`;
+const isPinnedItem = (s, it) => it.kind === 'pinned' || it.kind === 'fav' || (it.kind === 'split' && !!findInSpaces(s, it.id));
+
+function moveLabel(s, items, target) {
+  if (target.zone === 'space') return toSpace(s, target.spaceId);
+  if (target.zone === 'favorites') return 'Add to Favorites';
+  if (target.zone === 'pinned' && items.some(it => it.kind !== 'pinned')) return 'Move to Pinned';
+  if (target.zone === 'unpinned' && items.some(it => isPinnedItem(s, it))) return 'Move to Unpinned';
+  return `Move ${tabsWord(items.length)}`;
+}
+
+function deleteLabel(s, id) {
+  const node = findInSpaces(s, id)?.node;
+  return node?.type === 'folder' ? 'Delete Folder' : 'Delete Pinned Tab';
+}
+
+const UNDO_LABELS = {
+  minimize: () => 'Close Tab',
+  closeTab: () => 'Close Tab',
+  deleteEntry: (s, m) => deleteLabel(s, m.id),
+  rename: (s, m) => (m.kind === 'space' ? 'Rename Space' : 'Rename'),
+  setEntryUrl: () => 'Change Pinned URL',
+  newFolder: () => 'New Folder',
+  move: (s, m) => moveLabel(s, [m.item], m.target),
+  moveMany: (s, m) => moveLabel(s, m.items, m.target),
+  closeMany: (s, m) => `Close ${tabsWord(m.items.length)}`,
+  deleteMany: (s, m) => (m.items.length === 1 && m.items[0].kind !== 'tab' ? deleteLabel(s, m.items[0].id) : 'Delete'),
+  duplicateMany: (s, m) => `Duplicate ${tabsWord(m.items.length)}`,
+  folderFrom: () => 'New Folder',
+  split: () => 'Split View',
+  unsplit: () => 'Separate Split View',
+  swapSplit: () => 'Swap Split Sides',
+  pinTab: () => 'Pin Tab',
+  unpin: () => 'Unpin Tab',
+  favorite: () => 'Add to Favorites',
+  unfavorite: () => 'Remove from Favorites',
+  moveToSpace: (s, m) => toSpace(s, m.spaceId),
+  createSpace: () => 'New Space',
+  updateSpace: () => 'Edit Space',
+  reorderSpace: () => 'Move Space',
+  deleteSpace: () => 'Delete Space',
+  clearSpace: () => 'Clear Unpinned Tabs',
+  restoreArchived: () => 'Reopen from Archive',
+  clearArchive: () => 'Clear Archive',
+  commandBarRun: (s, m) => barUndoLabel(s, m.windowId, m.action, m.arg),
+};
+
+// Command bar actions and shortcuts act on the current tab.
+async function barUndoLabel(s, windowId, action, arg) {
+  const fixed = {
+    'restore-archived': 'Reopen from Archive',
+    'new-space': 'New Space',
+    'clear-unpinned': 'Clear Unpinned Tabs',
+    unsplit: 'Separate Split View',
+    'swap-split': 'Swap Split Sides',
+    'split-with': 'Split View',
+    duplicate: 'Duplicate Tab',
+    'close-tab': 'Close Tab',
+    'archive-tab': 'Archive Tab',
+    rename: 'Rename',
+    'replace-pin': 'Change Pinned URL',
+  }[action];
+  if (fixed) return fixed;
+  if (action === 'move-to-space') return toSpace(s, arg);
+  if (action !== 'toggle-pin' && action !== 'toggle-favorite') return null;
+  const { tab, rec, fav } = await barTarget(s, windowId);
+  if (!tab) return null;
+  if (action === 'toggle-pin') return rec ? 'Pin Tab' : 'Unpin Tab';
+  return fav ? 'Remove from Favorites' : 'Add to Favorites';
+}
+
+// ---------------------------------------------------------------------------
 // Messages from the side panel
 
 const handlers = {
@@ -1406,6 +1767,7 @@ const handlers = {
     if (r) await closeTabs(s, [r.tabId]);
   },
   newTab: (s, m) => chrome.tabs.create({ windowId: m.windowId }),
+  undo: (s, { windowId }) => undo(s, windowId),
 
   rename: (s, { kind, id, name }) => {
     name = String(name || '').trim();
@@ -1629,9 +1991,10 @@ const handlers = {
 
   exportData: s => ({ app: 'sidecar', version: 1, exportedAt: new Date().toISOString(), layout: s.layout }),
 
-  importData: (s, { data }) => {
+  importData: async (s, { data }) => {
     const layout = data && data.layout ? data.layout : data;
     if (!layout || !Array.isArray(layout.spaces)) throw new Error('That file does not look like a Sidecar export.');
+    await clearUndo(); // undoing into the replaced layout would make a mess of both
     s.layout = normalizeLayout(layout);
     s.runtime.bindings = {};
     pruneRuntime(s);
@@ -1655,7 +2018,7 @@ const handlers = {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const handler = handlers[msg && msg.type];
   if (!handler) return false;
-  mutate(s => handler(s, msg, sender)).then(
+  mutate(async s => recordUndo(s, await UNDO_LABELS[msg.type]?.(s, msg), st => handler(st, msg, sender))).then(
     result => sendResponse({ ok: true, result }),
     err => sendResponse({ ok: false, error: String(err && err.message || err) }),
   );
@@ -1731,17 +2094,22 @@ async function smartRoute(s, rec, tab, url) {
 chrome.tabs.onRemoved.addListener((tabId, info) => {
   const now = Date.now();
   for (const [id, t] of recentlyRemoved) if (now - t > 5000) recentlyRemoved.delete(id);
+  // Sidecar closing a tab is part of an action, which keeps its own undo.
+  const ours = recentlyRemoved.has(tabId);
   recentlyRemoved.set(tabId, now);
   mutate(async s => {
     s.runtime.mru = s.runtime.mru.filter(id => id !== tabId);
     const eid = entryIdForTab(s, tabId);
-    if (eid) delete s.runtime.bindings[eid];
     const rec = recordForTab(s, tabId);
-    if (rec) {
-      // Closing a whole window (or quitting) keeps its tabs as sleeping entries.
-      if (info.isWindowClosing) rec.tabId = null;
-      else removeRecord(s, rec.id);
-    }
+    const label = (rec || eid) && !ours && !info.isWindowClosing ? 'Close Tab' : null;
+    await recordUndo(s, label, () => {
+      if (eid) delete s.runtime.bindings[eid];
+      if (rec) {
+        // Closing a whole window (or quitting) keeps its tabs as sleeping entries.
+        if (info.isWindowClosing) rec.tabId = null;
+        else removeRecord(s, rec.id);
+      }
+    }, tabId);
   });
 });
 
@@ -1886,7 +2254,11 @@ chrome.commands.onCommand.addListener((command, tab) => {
     chrome.runtime.sendMessage({ type: 'switcherNext' }).catch(() => {});
     return;
   }
-  mutate(s => runCommand(s, command, tab));
+  mutate(async s => {
+    const windowId = tab ? tab.windowId : (await chrome.windows.getLastFocused().catch(() => null))?.id;
+    const label = ['toggle-pin', 'toggle-favorite'].includes(command) && windowId != null ? await barUndoLabel(s, windowId, command) : null;
+    return recordUndo(s, label, st => runCommand(st, command, tab));
+  });
 });
 
 async function runCommand(s, command, tab) {
