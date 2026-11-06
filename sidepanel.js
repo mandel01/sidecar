@@ -586,6 +586,7 @@ function rowMenu(row, x, y) {
       { text: 'Pin tab', run: () => send({ type: 'pinTab', id }) },
       { text: 'Add to Favorites', run: () => send({ type: 'favorite', kind: 'tab', id }) },
       { text: 'Copy link', run: () => copy(item.url) },
+      { text: 'Duplicate tab', run: () => send({ type: 'duplicateMany', items: [{ kind, id }], windowId }) },
       ...spaceTargets('tab', id, space.id),
       '-',
       { text: 'Close tab', danger: true, run: () => send({ type: 'closeTab', id }) },
@@ -602,11 +603,16 @@ function rowMenu(row, x, y) {
       { text: 'Remove from Favorites', danger: true, run: () => send({ type: 'deleteEntry', id }) },
     ]);
   } else if (item.folder) {
+    const tabs = selectedTabs([{ kind, id, folder: true }]);
+    const open = tabs.filter(t => t.open).map(({ kind, id }) => ({ kind, id }));
+    const word = k => k === 1 ? 'tab' : 'tabs';
     showMenu(x, y, [
       rename,
       { text: 'New folder inside', run: () => newFolder(id) },
+      tabs.length && { text: `Copy ${tabs.length} ${tabs.length === 1 ? 'link' : 'links'}`, run: () => navigator.clipboard.writeText(tabs.map(t => t.url).join('\n')).then(() => toast(`${tabs.length} ${tabs.length === 1 ? 'link' : 'links'} copied`)) },
       ...spaceTargets('pinned', id, space.id),
       '-',
+      open.length && { text: `Close ${open.length} open ${word(open.length)} (stay pinned)`, run: () => send({ type: 'closeMany', items: open }) },
       { text: 'Delete folder and its tabs', danger: true, run: () => confirmAction(`Delete “${item.node.name}” and everything in it?`, () => send({ type: 'deleteEntry', id })) },
     ]);
   } else {
@@ -615,6 +621,7 @@ function rowMenu(row, x, y) {
       item.live && { text: 'Set pinned URL to current page', run: () => send({ type: 'setEntryUrl', id }) },
       { text: 'Edit pinned URL…', run: () => editEntryUrl(id, item) },
       { text: 'Copy link', run: () => copy(item.url) },
+      { text: 'Duplicate tab', run: () => send({ type: 'duplicateMany', items: [{ kind, id }], windowId }) },
       { text: 'Add to Favorites', run: () => send({ type: 'favorite', kind: 'pinned', id }) },
       { text: 'Unpin', run: () => send({ type: 'unpin', id, windowId }) },
       ...spaceTargets('pinned', id, space.id),

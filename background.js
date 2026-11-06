@@ -1484,6 +1484,14 @@ const handlers = {
       if (kind === 'tab') await handlers.closeTab(s, { id });
       else await minimize(s, id);
     }
+    // Folders whose tabs were just closed fold up.
+    const closed = new Set(items.filter(i => i.kind !== 'tab').map(i => i.id));
+    const fold = nodes => nodes.reduce((hit, n) => {
+      if (n.type !== 'folder') return hit || closed.has(n.id);
+      if (fold(n.children)) { n.collapsed = true; return true; }
+      return hit;
+    }, false);
+    if (closed.size) for (const sp of s.layout.spaces) fold(sp.pinned);
   },
   // Unpinned tabs close; pinned tabs and folders (with everything in them) go.
   deleteMany: async (s, { items }) => {
