@@ -148,6 +148,7 @@ So instead of "assign this space to the Work profile", you put your work spaces 
 
 ## Limitations
 
+- Sync storage holds about a thousand pinned tabs and favorites in total (Chrome allows 100 KB). Settings → Sync shows how much is used.
 - Chrome's horizontal tab strip can't be hidden by an extension. Collapsing spaces into tab groups is the closest available option.
 - The sidebar is Chrome's side panel, so it opens per window. Use the keyboard shortcut or the toolbar icon to open it.
 - Favicons for tabs that aren't open come from Chrome's favicon cache. A site you've never visited on this computer shows a globe until you open it once.
