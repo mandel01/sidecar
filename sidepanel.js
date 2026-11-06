@@ -782,7 +782,7 @@ function openArchiveDialog() {
     <p>Unpinned tabs you closed, cleared or left unused for ${layout.settings.archiveHours || '∞'} hours. Tabs open less than 30 seconds aren't kept. Click one to reopen it.</p>
     <div class="archive-list"></div>
     <div class="actions">
-      ${list.length ? '<button class="btn danger" data-act="clear">Clear archive</button>' : ''}
+      ${list.length ? '<button class="btn danger" data-act="clear">Clear Archive</button>' : ''}
       <span class="spacer"></span>
       <button class="btn" data-act="close">Done</button>
     </div>`);
@@ -810,6 +810,7 @@ function openArchiveDialog() {
   });
   d.querySelector('.actions').addEventListener('click', e => {
     const act = e.target.dataset.act;
+    if (act === 'clear' && !confirm('Clear the Archive? This also clears Undo, and can’t be undone.')) return;
     if (act === 'clear') send({ type: 'clearArchive' });
     if (act) d.close();
   });

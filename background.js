@@ -1359,6 +1359,15 @@ async function runBarAction(s, windowId, action, arg) {
     case 'focus-space': return switchSpace(s, windowId, arg);
     case 'new-space': return handlers.createSpace(s, { windowId, name: arg });
     case 'clear-unpinned': return handlers.clearSpace(s, { spaceId: getWindowSpace(s, windowId) });
+    case 'clear-archive': return handlers.clearArchive(s);
+    // Everything Chrome keeps about where you've been, for all time, then
+    // Sidecar's own copies. Passwords, autofill, bookmarks and tabs stay.
+    case 'clear-all-data':
+      await chrome.browsingData.remove({ since: 0 }, {
+        history: true, downloads: true, cookies: true, cache: true, cacheStorage: true,
+        localStorage: true, indexedDB: true, serviceWorkers: true, fileSystems: true,
+      });
+      return handlers.clearArchive(s);
     case 'new-window': return chrome.windows.create({});
     case 'new-incognito': return chrome.windows.create({ incognito: true });
     case 'minimize-window': return chrome.windows.update(windowId, { state: 'minimized' });
@@ -1374,6 +1383,18 @@ async function runBarAction(s, windowId, action, arg) {
     case 'back': return chrome.tabs.goBack(id).catch(() => {});
     case 'forward': return chrome.tabs.goForward(id).catch(() => {});
     case 'duplicate': return chrome.tabs.duplicate(id);
+    // Cookies go for the whole site (mail.google.com clears all of google.com),
+    // along with what the site has stored. Then a reload shows the result.
+    case 'clear-site-cookies':
+    case 'clear-site-cache': {
+      const url = tabUrl(tab);
+      if (!/^https?:/.test(url)) return;
+      const types = action === 'clear-site-cache'
+        ? { cache: true }
+        : { cookies: true, localStorage: true, indexedDB: true, serviceWorkers: true, cacheStorage: true, fileSystems: true };
+      await chrome.browsingData.remove({ origins: [new URL(url).origin] }, types);
+      return chrome.tabs.reload(id, { bypassCache: true });
+    }
     case 'close-tab':
       // Off the sidebar first, so undoing puts it back.
       if (rec) archiveClosed(s, removeRecord(s, rec.id));
@@ -1745,7 +1766,6 @@ const UNDO_LABELS = {
   deleteSpace: () => 'Delete Space',
   clearSpace: () => 'Clear Unpinned Tabs',
   restoreArchived: () => 'Reopen from Archive',
-  clearArchive: () => 'Clear Archive',
   commandBarRun: (s, m) => barUndoLabel(s, m.windowId, m.action, m.arg),
 };
 
@@ -1989,7 +2009,12 @@ const handlers = {
     const a = s.runtime.archived.splice(index, 1)[0];
     if (a) await chrome.tabs.create({ windowId, url: a.url, active: true });
   },
-  clearArchive: s => { s.runtime.archived = []; },
+  // Undo goes too: its copies hold the archive (and closed tabs' URLs), and
+  // clearing is meant to leave nothing behind.
+  clearArchive: async s => {
+    s.runtime.archived = [];
+    await clearUndo();
+  },
 
   updateSettings: async (s, { settings }) => {
     const before = s.layout.settings.groupTabsBySpace;

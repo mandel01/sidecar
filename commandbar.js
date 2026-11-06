@@ -48,7 +48,7 @@ function commands() {
   return [
     ...cmd(c.page, 'Copy Current URL', '⎘', null, { keys: 'link clipboard', local: () => navigator.clipboard.writeText(c.url) }),
     ...cmd(c.page, 'Duplicate Current Tab', '⧉', 'duplicate'),
-    ...cmd(true, c.undo ? `Undo: ${c.undo}` : 'Undo (Reopen Last Closed Tab)', '↶', 'undo', { keys: 'undo reopen last closed tab restore' }),
+    ...cmd(true, c.undo ? `Undo: ${c.undo}` : 'Undo (Reopen Last Closed Tab)', '↩', 'undo', { keys: 'undo reopen last closed tab restore' }),
     ...cmd(c.inSidecar && !c.favorite, c.pinned ? 'Unpin Tab' : 'Pin Tab', c.pinned ? '⊖' : '⊕', 'toggle-pin'),
     ...cmd(c.inSidecar && !c.split, c.favorite ? 'Remove from Favorites' : 'Add to Favorites', c.favorite ? '☆' : '★', 'toggle-favorite', { keys: 'favorite' }),
     ...cmd(c.inSidecar && !c.split, 'Rename Tab…', '✎', 'rename', { prompt: { placeholder: 'New name (leave empty to use the page title)', value: c.title } }),
@@ -71,6 +71,11 @@ function commands() {
     ...(c.inSidecar ? others : []).map(sp => ({ name: `Move Tab to ${spaceLabel(sp)}`, icon: '↪', action: 'move-to-space', arg: sp.id, keys: 'space pin', color: sp.color, extra: true })),
     ...cmd(true, 'New Space…', '+', 'new-space', { keys: 'create', prompt: { placeholder: 'Name of the new space' } }),
     ...cmd(true, 'Clear Unpinned Tabs', '⌫', 'clear-unpinned', { keys: 'archive all today' }),
+    ...cmd(/^https?:/.test(c.url || ''), 'Clear Cookies for This Site', '⌧', 'clear-site-cookies', { keys: 'sign out log out site data storage privacy delete' }),
+    ...cmd(/^https?:/.test(c.url || ''), 'Clear Cache for This Site', '⌧', 'clear-site-cache', { keys: 'hard reload refresh stale privacy delete' }),
+    ...cmd(true, 'Clear Browsing Data…', '⌧', 'open-page', { arg: 'chrome://settings/clearBrowserData', keys: 'history cookies cache privacy delete' }),
+    ...cmd(true, 'Clear Archive', '⌧', 'clear-archive', { keys: 'archived tabs privacy delete' }),
+    ...cmd(true, 'Clear All Browsing Data and Sidecar’s Archive', '⌧', 'clear-all-data', { keys: 'everything history cookies cache downloads privacy delete erase', prompt: { confirm: true, placeholder: '⚠️ Signs you out of every site, and can’t be undone', hint: 'Enter to clear · Esc to go back' } }),
     ...cmd(/^(https?|file):/.test(c.url || ''), 'Screenshot Page', '⎙', 'screenshot', { keys: 'capture image picture snapshot save png' }),
     ...cmd(/^(https?|file):/.test(c.url || ''), 'Video Miniplayer (Picture in Picture)', '▣', null, { keys: 'pip video float floating miniplayer pop out', local: () => pictureInPicture(c.tabId) }),
     ...cmd(true, 'Open Sidebar', '▤', null, { keys: 'side panel sidecar', local: () => chrome.sidePanel.open({ windowId }) }),
@@ -247,7 +252,7 @@ const rowKey = it => it && `${it.cmd?.action}|${it.cmd?.arg ?? it.title}`;
 function render(keep = false) {
   const was = keep && moved ? rowKey(items[sel]) : null;
   items = asking
-    ? [{ title: asking.name.replace('…', ''), glyph: asking.icon, hint: 'Enter to save · Esc to go back', cmd: null }]
+    ? [{ title: asking.name.replace('…', ''), glyph: asking.prompt.confirm ? '⚠️' : asking.icon, hint: asking.prompt.hint || 'Enter to save · Esc to go back', cmd: null }]
     : build();
   sel = 0;
   list.replaceChildren(...items.map((it, i) => {
@@ -298,6 +303,7 @@ async function choose() {
     asking = c;
     input.value = c.prompt.value || '';
     input.placeholder = c.prompt.placeholder;
+    input.readOnly = !!c.prompt.confirm; // just Enter or Esc, nothing to type
     input.select();
     return render();
   }
@@ -333,6 +339,7 @@ addEventListener('keydown', e => {
     e.preventDefault();
     if (asking) {
       asking = null;
+      input.readOnly = false;
       input.value = '';
       input.placeholder = 'Type a URL, search, or find a tab or command';
       render();
