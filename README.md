@@ -69,7 +69,7 @@ The extension ID stays `gkaleojfpcipaofanpfapmknhmfaeeko` on every computer beca
 | Favorites | Archived tabs |
 | Settings | |
 
-- Sync goes through `chrome.storage.sync`, so it uses your Google account's Chrome Sync. Nothing is sent to any other server, and the extension makes no network requests of its own.
+- Sync goes through `chrome.storage.sync`, so it uses your Google account's Chrome Sync. Your layout isn't sent to any other server. The only request Sidecar makes on its own is the command bar's Google suggestions, which send what you type there to Google; turn them off in Settings.
 - Data is encrypted in transit and at rest by Google. For **end-to-end encryption**, where Google can't read it, set a sync passphrase: Settings → *You and Google* → *Sync and Google services* → *Encryption options* → **Encrypt synced data with your own sync passphrase**. That covers extension data as well as bookmarks and passwords.
 - If two computers change the layout at nearly the same time, the most recent change wins.
 - Chrome allows 100 KB of sync storage. The layout is compressed, so a few thousand pinned tabs fit. Settings → Sync shows how much is used.
