@@ -1,7 +1,7 @@
 // Side panel UI. Reads state from chrome.storage.local, asks the background
 // worker to make every change, and re-renders whenever storage or tabs change.
 
-import { COLOR_HEX, GROUP_COLORS, ICON_PRESETS, FALLBACK_ICON, compactTitle, hostOf, faviconFor, walk, isNewTabUrl } from './shared.js';
+import { COLOR_HEX, GROUP_COLORS, ICON_PRESETS, FALLBACK_ICON, compactTitle, hostOf, faviconFor, walk, isNewTabUrl, SPEAKER_SVG } from './shared.js';
 
 const $ = id => document.getElementById(id);
 const els = {
@@ -101,6 +101,9 @@ function render() {
   renderPinned(space);
   renderUnpinned(space);
   renderSpaces(space);
+  const muteBtn = $('mute-mode-btn');
+  muteBtn.classList.toggle('muted', !!runtime?.muteMode);
+  muteBtn.title = runtime?.muteMode ? 'All tabs are muted, including new ones. Click to unmute them.' : 'Mute all tabs, including new ones';
   applySelection();
   if (pendingRename) {
     const row = document.querySelector(`.row[data-id="${pendingRename}"]`);
@@ -133,12 +136,8 @@ function tabRow({ kind, id, title, url, live, asleep, depth, action, actionTitle
   name.textContent = title;
   row.append(makeIcon(faviconFor(url, live)), name);
 
-  if (live && live.audible) {
-    const a = document.createElement('span');
-    a.className = 'audible';
-    a.textContent = live.mutedInfo && live.mutedInfo.muted ? '🔇' : '🔊';
-    row.append(a);
-  }
+  const sound = soundButton(live);
+  if (sound) row.append(sound);
   const btn = document.createElement('button');
   btn.className = 'hover-btn';
   btn.dataset.action = action;
@@ -146,6 +145,21 @@ function tabRow({ kind, id, title, url, live, asleep, depth, action, actionTitle
   btn.textContent = action === 'minimize' ? '−' : '×';
   row.append(btn);
   return row;
+}
+
+// The speaker from the bottom bar, on a tab making sound: with waves while it
+// plays, crossed out in red once muted. Clicking it mutes or unmutes the tab.
+// Silent tabs show nothing, muted or not.
+function soundButton(live) {
+  if (!live?.audible) return null;
+  const muted = !!live.mutedInfo?.muted;
+  const btn = Object.assign(document.createElement('button'), {
+    className: `audible speaker${muted ? ' muted' : ''}`,
+    innerHTML: SPEAKER_SVG,
+    title: muted ? 'Unmute tab' : 'Mute tab',
+  });
+  btn.dataset.tabId = live.id; // dataset can't be assigned whole
+  return btn;
 }
 
 // An unread count in a page title: "Inbox (3) - Gmail", "(2) Instagram". Up to
@@ -171,6 +185,8 @@ function renderFavorites() {
     tile.append(img);
     const unread = live && unreadCount(live.title);
     if (unread) tile.append(Object.assign(document.createElement('span'), { className: 'badge', textContent: unread }));
+    const sound = soundButton(live);
+    if (sound) tile.append(sound);
     return tile;
   }));
 }
@@ -995,6 +1011,11 @@ document.addEventListener('click', e => {
   if (!els.menu.contains(e.target)) hideMenu();
   if (editing || els.dialog.open) return;
 
+  const sound = e.target.closest('.audible');
+  if (sound) {
+    send({ type: 'toggleMute', tabId: Number(sound.dataset.tabId) });
+    return;
+  }
   const row = rowOf(e.target);
   const btn = e.target.closest('.hover-btn');
   if (row && btn) {
@@ -1029,6 +1050,10 @@ document.addEventListener('click', e => {
   else if (id === 'settings-btn') openSettingsDialog();
   else if (id === 'archive-btn') openArchiveDialog();
   else if (id === 'undo-btn') undo();
+  else if (id === 'mute-mode-btn') {
+    const on = !runtime?.muteMode;
+    send({ type: 'setMuteMode', on }).then(() => toast(on ? 'All Tabs Muted' : 'All Tabs Unmuted'), () => {});
+  }
 });
 
 // ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ A Chrome extension inspired by the Arc Browser's sidebar:
   - Right-click either side for *Swap sides*, *Separate split view*, pin/unpin and move to space. Separating or swapping with Chrome's own controls updates the sidebar too.
 - **Spaces** each have their own name, emoji icon and color, and the sidebar is tinted with the space's color. Switch spaces by clicking the icons at the bottom, swiping sideways with two fingers on the sidebar, or pressing `Alt+Shift+←/→`.
 - **Favorites** appear in every space, as icons at the top. An open favorite whose page title has an unread count (Gmail, Instagram and the like) shows the number on its icon.
+- **Sound**: a speaker shows on a tab playing sound, crossed out in red once it's muted. Click it to mute or unmute the tab. The speaker next to Undo mutes every tab, including ones you open later, and turns red while that's on. Click it again to unmute them all. The command bar has *Mute All Tabs* and *Unmute All Tabs* too.
 - **Undo** (curved arrow, bottom left, or `⌘Z` / `Ctrl+Z` while the sidebar has focus) steps back through your last 20 actions: closing, archiving or deleting tabs and folders, pinning, splitting, moving, renaming, and so on. Closed tabs come back with their history. Hover the button to see what it will undo. When there's nothing left, it reopens the last closed tab, like `⌘⇧T`. The list is kept on each computer and cleared when Chrome restarts.
 - **Sync**: spaces, pinned tabs, folders, favorites and settings follow you to every computer signed into the same Chrome profile.
 

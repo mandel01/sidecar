@@ -78,6 +78,19 @@ body { display: flex; flex-direction: column; }
   color: var(--muted);
 }
 
+.icon svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.speaker .slash { display: none; }
+.speaker.muted .waves { display: none; }
+.speaker.muted .slash { display: inline; stroke: #e5484d; stroke-width: 1.8; }
+
 .title {
   flex: 1;
   min-width: 0;

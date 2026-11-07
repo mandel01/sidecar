@@ -54,6 +54,7 @@ function normalizeRuntime(r = {}) {
     activeTab: r.activeTab || {},        // windowId -> active tab id
     mru: Array.isArray(r.mru) ? r.mru : [], // tab ids, most recently used first (for the tab switcher)
     archived: Array.isArray(r.archived) ? r.archived : [],
+    muteMode: !!r.muteMode,              // Mute All Tabs is on: tabs start muted until Unmute All
     stale: Array.isArray(r.stale) ? r.stale : [], // bindings waiting to be re-matched after restart
     lastSpaceId: r.lastSpaceId || null,
     sync: r.sync || { status: 'pending', at: 0, error: '', bytes: 0 },
@@ -1313,6 +1314,8 @@ async function commandBarData(s, windowId) {
       splitWith: splitWith ? { tabId: splitWith.tabId, title: splitWith.title } : null,
       spaceId: getWindowSpace(s, windowId),
       undo: (await undoList()).at(-1)?.label || '',
+      muteMode: s.runtime.muteMode,
+      anyMuted: (await chrome.tabs.query({ muted: true })).length > 0,
     },
     spaces: s.layout.spaces.map(sp => ({ id: sp.id, name: sp.name, icon: sp.icon, color: sp.color })),
     tabs,
@@ -1360,6 +1363,8 @@ async function runBarAction(s, windowId, action, arg) {
     case 'new-space': return handlers.createSpace(s, { windowId, name: arg });
     case 'clear-unpinned': return handlers.clearSpace(s, { spaceId: getWindowSpace(s, windowId) });
     case 'clear-archive': return handlers.clearArchive(s);
+    case 'mute-all': return handlers.setMuteMode(s, { on: true });
+    case 'unmute-all': return handlers.setMuteMode(s, { on: false });
     // Everything Chrome keeps about where you've been, for all time, then
     // Sidecar's own copies. Passwords, autofill, bookmarks and tabs stay.
     case 'clear-all-data':
@@ -2011,6 +2016,17 @@ const handlers = {
   },
   // Undo goes too: its copies hold the archive (and closed tabs' URLs), and
   // clearing is meant to leave nothing behind.
+  toggleMute: async (s, { tabId }) => {
+    const t = await chrome.tabs.get(tabId).catch(() => null);
+    if (t) await chrome.tabs.update(tabId, { muted: !t.mutedInfo?.muted });
+  },
+  // Mute All Tabs mutes what's open and turns on Mute Mode, so new tabs start
+  // muted too. Unmute All turns it off and unmutes everything.
+  setMuteMode: async (s, { on }) => {
+    s.runtime.muteMode = on;
+    const list = await chrome.tabs.query({ muted: !on });
+    await Promise.all(list.map(t => chrome.tabs.update(t.id, { muted: on }).catch(() => {})));
+  },
   clearArchive: async s => {
     s.runtime.archived = [];
     await clearUndo();
@@ -2075,6 +2091,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // Chrome events
 
 chrome.tabs.onCreated.addListener(tab => mutate(async s => {
+  // Mute Mode: every new tab starts muted. One you unmute yourself stays unmuted.
+  if (s.runtime.muteMode && !tab.mutedInfo?.muted) await chrome.tabs.update(tab.id, { muted: true }).catch(() => {});
   if (isPopupTab(tab)) return;
   if (recordForTab(s, tab.id) || entryIdForTab(s, tab.id)) return;
   if (Date.now() < reconcileUntil && tryClaim(s, tab)) return;

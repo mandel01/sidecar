@@ -196,7 +196,52 @@ body.dragging #favorites:empty::after {
   white-space: nowrap;
 }
 
-.audible { font-size: 11px; color: var(--muted); }
+.audible {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+.audible:hover { background: var(--row-hover); color: var(--text); }
+.audible svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* A row with a speaker keeps the − / × space, so the speaker doesn't jump. */
+.row:has(.audible) .hover-btn { display: grid; visibility: hidden; }
+.row:has(.audible):hover .hover-btn { visibility: visible; }
+
+/* On a favorite: tucked against the icon's bottom right corner, overlapping it
+   a little. The round backing only shows on hover. */
+.fav .audible {
+  position: absolute;
+  left: calc(50% + 3px);
+  top: calc(50% + 1px);
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  color: var(--text);
+}
+/* Hover: a see-through tint of the space color, blurred so the speaker still reads over the icon. */
+.fav .audible:hover {
+  background: color-mix(in srgb, var(--space) 22%, transparent);
+  backdrop-filter: blur(3px);
+}
+.fav .audible svg { width: 13px; height: 13px; }
+
+/* Speakers (tabs and the bottom bar): waves while playing; muted, a red line. */
+.speaker .slash { display: none; }
+.speaker.muted .waves { display: none; }
+.speaker.muted .slash { display: inline; stroke: #e5484d; stroke-width: 1.8; }
 
 .hover-btn {
   width: 22px;

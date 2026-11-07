@@ -5,7 +5,7 @@
 // it in the same box. Typing also lists sites from your history and, unless
 // turned off in Settings, Google's suggestions.
 
-import { COLOR_HEX, faviconFor, hostOf } from './shared.js';
+import { COLOR_HEX, faviconFor, hostOf, SPEAKER_SVG } from './shared.js';
 
 const windowId = Number(new URLSearchParams(location.search).get('window'));
 const input = document.getElementById('q');
@@ -71,6 +71,8 @@ function commands() {
     ...(c.inSidecar ? others : []).map(sp => ({ name: `Move Tab to ${spaceLabel(sp)}`, icon: '↪', action: 'move-to-space', arg: sp.id, keys: 'space pin', color: sp.color, extra: true })),
     ...cmd(true, 'New Space…', '+', 'new-space', { keys: 'create', prompt: { placeholder: 'Name of the new space' } }),
     ...cmd(true, 'Clear Unpinned Tabs', '⌫', 'clear-unpinned', { keys: 'archive all today' }),
+    ...cmd(!c.muteMode, 'Mute All Tabs', '', 'mute-all', { keys: 'sound audio silence quiet', svg: SPEAKER_SVG, iconClass: 'speaker muted' }),
+    ...cmd(c.muteMode || c.anyMuted, 'Unmute All Tabs', '', 'unmute-all', { keys: 'sound audio', svg: SPEAKER_SVG, iconClass: 'speaker' }),
     ...cmd(/^https?:/.test(c.url || ''), 'Clear Cookies for This Site', '⌧', 'clear-site-cookies', { keys: 'sign out log out site data storage privacy delete' }),
     ...cmd(/^https?:/.test(c.url || ''), 'Clear Cache for This Site', '⌧', 'clear-site-cache', { keys: 'hard reload refresh stale privacy delete' }),
     ...cmd(true, 'Clear Browsing Data…', '⌧', 'open-page', { arg: 'chrome://settings/clearBrowserData', keys: 'history cookies cache privacy delete' }),
@@ -194,7 +196,7 @@ function score(text, words) {
 
 function build() {
   const q = input.value.trim();
-  const fromCommand = c => ({ title: c.name, glyph: c.icon, color: c.color, hint: '', cmd: c });
+  const fromCommand = c => ({ title: c.name, glyph: c.icon, svg: c.svg, iconClass: c.iconClass, color: c.color, hint: '', cmd: c });
   if (!q) return commands().filter(c => !c.extra).map(fromCommand);
 
   const words = q.toLowerCase().split(/\s+/);
@@ -266,9 +268,10 @@ function render(keep = false) {
       icon.src = faviconFor(it.url, it.live);
     } else {
       icon = document.createElement('span');
-      icon.textContent = it.glyph || '';
+      if (it.svg) icon.innerHTML = it.svg;
+      else icon.textContent = it.glyph || '';
     }
-    icon.className = 'icon';
+    icon.className = it.iconClass ? `icon ${it.iconClass}` : 'icon';
     const title = Object.assign(document.createElement('span'), { className: 'title', textContent: it.title });
     const hint = Object.assign(document.createElement('span'), { className: 'hint', textContent: it.hint });
     row.append(icon, title, hint);
