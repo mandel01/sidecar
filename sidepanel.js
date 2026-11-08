@@ -102,7 +102,10 @@ function render() {
   renderUnpinned(space);
   renderSpaces(space);
   const muteBtn = $('mute-mode-btn');
+  // Crossed out in Mute Mode; otherwise waves only while some tab is heard.
+  const playing = [...tabs.values()].some(t => t.audible && !t.mutedInfo?.muted);
   muteBtn.classList.toggle('muted', !!runtime?.muteMode);
+  muteBtn.classList.toggle('quiet', !runtime?.muteMode && !playing);
   muteBtn.title = runtime?.muteMode ? 'All tabs are muted, including new ones. Click to unmute them.' : 'Mute all tabs, including new ones';
   applySelection();
   if (pendingRename) {

@@ -240,7 +240,7 @@ body.dragging #favorites:empty::after {
 
 /* Speakers (tabs and the bottom bar): waves while playing; muted, a red line. */
 .speaker .slash { display: none; }
-.speaker.muted .waves { display: none; }
+.speaker.muted .waves, .speaker.quiet .waves { display: none; }
 .speaker.muted .slash { display: inline; stroke: #e5484d; stroke-width: 1.8; }
 
 .hover-btn {
