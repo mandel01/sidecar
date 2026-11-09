@@ -1,6 +1,8 @@
 # Sidecar: spaces and vertical tabs for Chrome
 
-A Chrome extension inspired by the Arc Browser's sidebar:
+A Chrome extension inspired by the Arc Browser's sidebar.
+
+<img src="docs/demo.gif" width="720" alt="Sidecar demo: favorites, switching between Home, Work and Travel spaces, folders, pinning and renaming a tab, the command bar, and split view">
 
 - **Vertical tabs** in Chrome's side panel, with compact names ("Inbox (3) - me@gmail.com - Gmail" shows as "Inbox (3)"). Double-click any name to rename it. Leave the name empty to go back to the page title.
 - **Pinned tabs** sit above the line and are kept until you delete them.
