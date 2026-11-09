@@ -44,8 +44,12 @@ Do these in Chrome first, in every profile you'll use Sidecar in:
 2. Open `chrome://extensions` and turn on **Developer mode** (top right).
 3. Click **Load unpacked** and choose the cloned folder (the one that contains `manifest.json`).
 4. Click the puzzle-piece icon in the toolbar and **pin** Sidecar, then click its icon to open the sidebar.
-   `⌥⇧S` (Mac) or `Alt+Shift+S` (Windows/Linux) also opens it. On a Mac, `⌘S` is recommended, but you have to set it yourself (see [Keyboard shortcuts](#keyboard-shortcuts)).
-5. Optional: put the side panel on the left. Go to Settings → *Appearance* → *Side panel* → **Show on left** (`chrome://settings/appearance`).
+   `⌥⇧S` (Mac) or `Alt+Shift+S` (Windows/Linux) also opens it.
+5. Recommended on a Mac: open `chrome://extensions/shortcuts` and set these Sidecar shortcuts (see [Keyboard shortcuts](#keyboard-shortcuts)):
+   - *Open the sidebar*: `⌘S`
+   - *Command bar*: `⌘T`
+   - *Switch to a recent tab*: `⌘E`
+6. Optional: put the side panel on the left. Go to Settings → *Appearance* → *Side panel* → **Show on left** (`chrome://settings/appearance`).
 
 On first run, every tab you already have open goes into a "Home" space.
 
