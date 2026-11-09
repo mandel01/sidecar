@@ -199,6 +199,7 @@ body.dragging #favorites:empty::after {
 .audible {
   width: 18px;
   height: 18px;
+  padding: 0; /* the browser's button padding pushed the icon off-center */
   border-radius: 5px;
   flex: none;
   display: grid;
