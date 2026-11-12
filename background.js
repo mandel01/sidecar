@@ -12,6 +12,7 @@
 // sends messages; it never writes state itself.
 
 import { uid, findNode, removeNode, walk, normalizeLayout, sameUrl, tidySplits, compactTitle, hostOf, isNewTabUrl } from './shared.js';
+import { mergeArcImport } from './arcimport.js';
 
 // Storage keys keep the old "vtabs" name: renaming them would orphan existing synced layouts.
 const META_KEY = 'vtabs_meta';
@@ -1766,6 +1767,7 @@ const UNDO_LABELS = {
   unfavorite: () => 'Remove from Favorites',
   moveToSpace: (s, m) => toSpace(s, m.spaceId),
   createSpace: () => 'New Space',
+  importArc: () => 'Import from Arc',
   updateSpace: () => 'Edit Space',
   reorderSpace: () => 'Move Space',
   deleteSpace: () => 'Delete Space',
@@ -1961,6 +1963,13 @@ const handlers = {
 
   switchSpace: (s, { windowId, spaceId }) => switchSpace(s, windowId, spaceId),
   cycleSpace: (s, { windowId, dir }) => cycleSpace(s, windowId, dir),
+
+  // From the Import from Arc page: the links picked there, merged in (see arcimport.js).
+  importArc: (s, { plan }) => {
+    const { layout, added } = mergeArcImport(s.layout, plan);
+    s.layout = normalizeLayout({ ...layout, rev: s.layout.rev });
+    return added;
+  },
 
   createSpace: async (s, { windowId, name, icon, color }) => {
     const sp = { id: uid(), name: name || 'Space', icon: icon || '', color: color || 'grey', pinned: [] };

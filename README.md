@@ -55,6 +55,8 @@ Do these in Chrome first, in every profile you'll use Sidecar in:
 
 On first run, every tab you already have open goes into a "Home" space.
 
+**Coming from Arc?** In Arc, open the Arc menu → Settings → Advanced → **Export Data**. Then in Sidecar, open Settings → **Import from Arc…** (or type it in the command bar) and choose the exported file. Pick a Sidecar space for each Arc space (or a new one), tick the links to bring over, and click Import. Arc's favorites become Sidecar favorites. Arc doesn't export page titles, so imported tabs show the site's name until you open them. The page shows how much of Sidecar's sync storage the result would use, which fits about a thousand pinned tabs and favorites in all.
+
 ## Installing on more computers
 
 1. **Back up first.** On the computer that already has Sidecar, open Settings → *Export…* in **each profile** and keep the files. If something goes wrong on the new computer, *Import…* puts the layout back.
@@ -176,6 +178,8 @@ So instead of "assign this space to the Work profile", you put your work spaces 
 | `newtab.html` | Blank New Tab page |
 | `switcher.html` / `.css` / `.js` | Recent-tab switcher window (`⌘E`) |
 | `commandbar.html` / `.css` / `.js` | Command bar window (`⌘T` recommended) |
+| `import.html` / `.css` / `.js` | Import from Arc page |
+| `arcimport.js` | Reads Arc's export and merges the chosen links into the layout (used by the import page and the service worker) |
 | `icons/` | Toolbar and extension icons |
 | `docs/` | Images used in this README (not loaded by Chrome) |
 

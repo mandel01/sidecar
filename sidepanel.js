@@ -876,6 +876,7 @@ function openSettingsDialog() {
       <div class="actions" style="margin-top:6px">
         <button type="button" class="btn" data-act="export">Export…</button>
         <button type="button" class="btn" data-act="import">Import…</button>
+        <button type="button" class="btn" data-act="arc">Import from Arc…</button>
         <input type="file" accept="application/json,.json" hidden>
       </div>
 
@@ -958,6 +959,9 @@ function openSettingsDialog() {
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     } else if (act === 'import') {
       file.click();
+    } else if (act === 'arc') {
+      chrome.tabs.create({ url: chrome.runtime.getURL('import.html') });
+      d.close();
     } else if (act === 'add-rule') {
       addRule().focus();
     } else if (act === 'remove-rule') {

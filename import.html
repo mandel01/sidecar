@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Import from Arc · Sidecar</title>
+  <link rel="stylesheet" href="import.css">
+</head>
+<body>
+  <main>
+    <h1>Import from Arc</h1>
+
+    <section id="start">
+      <p>Bring your Arc spaces, folders and pinned tabs into Sidecar.</p>
+      <ol>
+        <li>In Arc, open the <b>Arc</b> menu → <b>Settings</b> → <b>Advanced</b> → <b>Export Data</b>. Arc saves a Markdown (<code>.md</code>) file.</li>
+        <li>Choose that file here, or drop it on this box.</li>
+      </ol>
+      <label id="drop">
+        <input type="file" id="file" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden>
+        <span>Choose Arc export…</span>
+      </label>
+      <p class="error" id="error" hidden></p>
+    </section>
+
+    <section id="choose" hidden>
+      <p class="intro">Pick a Sidecar space for each Arc space, then tick the links to bring over. Links already in that Sidecar space start unticked. Arc doesn't export page titles, so imported tabs show the site's name until you first open them.</p>
+      <div class="toolbar">
+        <button type="button" class="btn" data-act="all">Check All</button>
+        <button type="button" class="btn" data-act="none">Check None</button>
+        <span class="sep"></span>
+        <button type="button" class="btn" data-act="expand">Expand All</button>
+        <button type="button" class="btn" data-act="collapse">Collapse All</button>
+        <button type="button" class="btn quiet" data-act="other-file">Choose another file…</button>
+      </div>
+      <div id="cards"></div>
+    </section>
+
+    <section id="done" hidden>
+      <p class="done-text"></p>
+      <p>Changed your mind? Click Undo in the sidebar (or press ⌘Z there) to take the whole import back.</p>
+      <button type="button" class="btn primary" data-act="close">Close</button>
+    </section>
+  </main>
+
+  <footer id="bar" hidden>
+    <div class="meter"><div class="fill"></div></div>
+    <div class="summary"></div>
+    <button type="button" class="btn primary" id="import-btn">Import</button>
+  </footer>
+
+  <script type="module" src="import.js"></script>
+</body>
+</html>

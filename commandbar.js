@@ -92,6 +92,7 @@ function commands() {
     ...cmd(true, 'Extensions', '⚙', 'open-page', { arg: 'chrome://extensions', keys: 'manage' }),
     ...cmd(true, 'Keyboard Shortcuts', '⌨', 'open-page', { arg: 'chrome://extensions/shortcuts', keys: 'extension keys' }),
     ...cmd(true, 'Settings', '⚙', 'open-page', { arg: 'chrome://settings', keys: 'preferences' }),
+    ...cmd(true, 'Import from Arc…', '⇩', 'open-page', { arg: chrome.runtime.getURL('import.html'), keys: 'arc browser bookmarks spaces export migrate', extra: true }),
   ];
 }
 
