@@ -12,7 +12,7 @@
 // sends messages; it never writes state itself.
 
 import { uid, findNode, removeNode, walk, normalizeLayout, sameUrl, tidySplits, compactTitle, hostOf, isNewTabUrl } from './shared.js';
-import { mergeArcImport } from './arcimport.js';
+import { mergeArcImport, SYNC_LIMIT } from './arcimport.js';
 
 // Storage keys keep the old "vtabs" name: renaming them would orphan existing synced layouts.
 const META_KEY = 'vtabs_meta';
@@ -58,7 +58,7 @@ function normalizeRuntime(r = {}) {
     muteMode: !!r.muteMode,              // Mute All Tabs is on: tabs start muted until Unmute All
     stale: Array.isArray(r.stale) ? r.stale : [], // bindings waiting to be re-matched after restart
     lastSpaceId: r.lastSpaceId || null,
-    sync: r.sync || { status: 'pending', at: 0, error: '', bytes: 0 },
+    sync: r.sync || { status: 'pending', at: 0, error: '', bytes: 0 }, // + size, titleBytes: see pushSync
     bookmarks: r.bookmarks || { enabled: false, folderId: null, at: 0, error: '' }, // mirror to Other Bookmarks
   };
 }
@@ -83,7 +83,7 @@ async function load() {
     console.warn('[sidecar] could not read synced layout', e);
     remoteUnreadable = true;
   }
-  if (remote && remote.rev > s.layout.rev) s.layout = normalizeLayout(remote);
+  if (remote && remote.rev > s.layout.rev) s.layout = normalizeLayout(withLocalTitles(remote, s.layout));
   else if (!got.layout && !remote) s.layout.rev = 1;
   lastLayoutKey = layoutKey(s.layout);
 
@@ -524,6 +524,30 @@ function schedulePush(delay = 3000) {
   pushTimer = setTimeout(() => mutate(pushSync), delay);
 }
 
+// What a gzipped, base64'd layout takes in sync storage: the chunks, their
+// keys and quotes, and the meta item. (Matches syncSize() in arcimport.js.)
+const syncBytes = b64 => b64.length + Math.ceil(b64.length / CHUNK_SIZE) * 12 + 40;
+
+// With page titles left out (Settings: "Sync page titles" off). Each computer
+// keeps its own titles; withLocalTitles() puts them back on what arrives.
+function withoutTitles(layout) {
+  const out = structuredClone(layout);
+  walk(out.favorites, n => { if (n.type === 'tab') n.title = ''; });
+  for (const sp of out.spaces) walk(sp.pinned, n => { if (n.type === 'tab') n.title = ''; });
+  return out;
+}
+
+function withLocalTitles(remote, local) {
+  const titles = new Map();
+  const note = n => { if (n.type === 'tab' && n.title) titles.set(n.id, n.title); };
+  walk(local.favorites || [], note);
+  for (const sp of local.spaces || []) walk(sp.pinned || [], note);
+  const fill = n => { if (n && n.type === 'tab' && !n.title && titles.has(n.id)) n.title = titles.get(n.id); };
+  walk(remote.favorites || [], fill);
+  for (const sp of remote.spaces || []) walk(sp.pinned || [], fill);
+  return remote;
+}
+
 async function pushSync(s) {
   const sync = s.runtime.sync;
   try {
@@ -533,7 +557,17 @@ async function pushSync(s) {
       applyRemoteLayout(s, remote);
       return;
     }
-    const data = await gzipB64(JSON.stringify(s.layout));
+    // Measured before saving, so the sidebar can warn as the limit nears and
+    // a layout that's too big isn't sent (Chrome would refuse it anyway).
+    const full = await gzipB64(JSON.stringify(s.layout));
+    const bare = await gzipB64(JSON.stringify(withoutTitles(s.layout)));
+    const data = s.layout.settings.syncTitles === false ? bare : full;
+    sync.size = syncBytes(data);
+    sync.titleBytes = syncBytes(full) - syncBytes(bare); // what titles take, or would
+    if (sync.size > SYNC_LIMIT) {
+      Object.assign(sync, { status: 'over', at: Date.now(), error: 'Over Chrome’s 100 KB sync limit' });
+      return;
+    }
     const items = {};
     let n = 0;
     for (let i = 0; i < data.length; i += CHUNK_SIZE) items[CHUNK_PREFIX + n++] = data.slice(i, i + CHUNK_SIZE);
@@ -544,12 +578,13 @@ async function pushSync(s) {
     if (extra.length) await chrome.storage.sync.remove(extra);
     Object.assign(sync, { status: 'ok', at: Date.now(), error: '', bytes: await chrome.storage.sync.getBytesInUse(null) });
   } catch (e) {
-    Object.assign(sync, { status: 'error', at: Date.now(), error: String(e.message || e) });
+    const msg = String(e.message || e);
+    Object.assign(sync, { status: /quota/i.test(msg) ? 'over' : 'error', at: Date.now(), error: msg });
   }
 }
 
 function applyRemoteLayout(s, remote) {
-  s.layout = normalizeLayout(remote);
+  s.layout = normalizeLayout(withLocalTitles(remote, s.layout));
   lastLayoutKey = layoutKey(s.layout);
   pruneRuntime(s);
   Object.assign(s.runtime.sync, { status: 'ok', at: Date.now(), error: '' });

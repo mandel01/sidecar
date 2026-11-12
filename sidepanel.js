@@ -101,6 +101,7 @@ function render() {
   renderPinned(space);
   renderUnpinned(space);
   renderSpaces(space);
+  renderSyncBanner();
   const muteBtn = $('mute-mode-btn');
   // Crossed out in Mute Mode; otherwise waves only while some tab is heard.
   const playing = [...tabs.values()].some(t => t.audible && !t.mutedInfo?.muted);
@@ -786,6 +787,113 @@ function openSpaceDialog(space) {
   f.elements.name.focus();
 }
 
+// ---------------------------------------------------------------------------
+// Sync storage: Chrome allows Sidecar 100 KB. The background measures the
+// layout before each save (runtime.sync.size). From 80% the sidebar warns, and
+// a dismissed warning comes back once usage grows another 5 points. Over the
+// limit, or when Chrome refuses a save, it can't be dismissed: changes stop
+// reaching other computers until there's room again.
+
+const SYNC_LIMIT = 100_000;
+const kb = n => `${Math.round(n / 1000)} KB`;
+const syncUsed = () => Math.max(runtime?.sync?.size || 0, runtime?.sync?.bytes || 0);
+
+function renderSyncBanner() {
+  const banner = $('sync-banner');
+  const sync = runtime?.sync || {};
+  const used = syncUsed();
+  const pct = Math.round(used / SYNC_LIMIT * 100);
+  const over = sync.status === 'over' || used > SYNC_LIMIT;
+  let dismissed = 0;
+  try { dismissed = Number(localStorage.getItem('syncWarnDismissed')) || 0; } catch {}
+  if (!over && (pct < 80 || pct < dismissed + 5)) {
+    banner.hidden = true;
+    return;
+  }
+  const titles = layout.settings.syncTitles !== false && sync.titleBytes > 2000
+    ? ` Turning off “Sync page titles” would free about ${kb(sync.titleBytes)}.` : '';
+  const text = document.createElement('span');
+  text.className = 'text';
+  text.append(over
+    ? `Sync is paused: Sidecar is over Chrome’s 100 KB limit. Changes stay on this computer until you free some space.${titles} `
+    : `Sync storage is ${pct}% full (${kb(used)} of 100 KB).${titles} `);
+  const details = Object.assign(document.createElement('a'), { textContent: 'Details' });
+  details.addEventListener('click', () => openSettingsDialog('sync'));
+  text.append(details);
+  banner.replaceChildren(text);
+  if (!over) {
+    const close = Object.assign(document.createElement('button'), { className: 'close', textContent: '×', title: 'Hide until it grows further' });
+    close.addEventListener('click', () => {
+      try { localStorage.setItem('syncWarnDismissed', String(pct)); } catch {}
+      banner.hidden = true;
+    });
+    banner.append(close);
+  }
+  banner.className = over ? 'over' : '';
+  banner.hidden = false;
+}
+
+// Roughly how much of the synced data each space and Favorites account for:
+// each compressed on its own, scaled so they add up to the total.
+async function syncBreakdown(total) {
+  const strip = n => (layout.settings.syncTitles === false ? JSON.stringify(n, (k, v) => (k === 'title' ? '' : v)) : JSON.stringify(n));
+  const gz = async str => (await new Response(new Blob([str]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer()).byteLength;
+  const parts = [];
+  for (const sp of layout.spaces) parts.push({ name: `${sp.icon ? sp.icon + ' ' : ''}${sp.name}`, n: await gz(strip(sp)) });
+  if (layout.favorites.length) parts.push({ name: '★ Favorites', n: await gz(strip(layout.favorites)) });
+  const sum = parts.reduce((a, p) => a + p.n, 0) || 1;
+  return parts.map(p => ({ ...p, bytes: p.n / sum * total })).sort((a, b) => b.bytes - a.bytes);
+}
+
+// Addresses long enough that removing one makes a real difference: over 300
+// characters, about five times a typical one. Compressed, they still take
+// roughly a byte per character.
+const LONG_URL = 300;
+function longUrls() {
+  const out = [];
+  const visit = (nodes, where) => walk(nodes, n => {
+    if (n.type === 'tab' && n.url.length > LONG_URL) out.push({ id: n.id, url: n.url, where });
+  });
+  visit(layout.favorites, '★ Favorites');
+  for (const sp of layout.spaces) visit(sp.pinned, `${sp.icon ? sp.icon + ' ' : ''}${sp.name}`);
+  return out.sort((a, b) => b.url.length - a.url.length);
+}
+
+function renderSyncDetails(d) {
+  const box = d.querySelector('.sync-details');
+  const sync = runtime.sync || {};
+  const used = syncUsed();
+  const pct = used / SYNC_LIMIT;
+  const meter = Object.assign(document.createElement('div'), { className: 'sync-meter' + (pct > 1 || sync.status === 'over' ? ' over' : pct >= 0.8 ? ' near' : '') });
+  meter.append(Object.assign(document.createElement('div'), { className: 'fill' }));
+  meter.firstChild.style.width = `${Math.min(100, pct * 100)}%`;
+  const breakdown = Object.assign(document.createElement('p'), { className: 'sync-breakdown' });
+  box.replaceChildren(meter, breakdown);
+  if (used) syncBreakdown(used).then(parts => {
+    breakdown.textContent = parts.map(p => `${p.name} ${p.bytes < 1000 ? '<1 KB' : kb(p.bytes)}`).join(' · ');
+  });
+  const long = longUrls();
+  if (!long.length) return;
+  const list = Object.assign(document.createElement('div'), { className: 'long-urls' });
+  list.append(Object.assign(document.createElement('p'), { textContent: `Very long addresses (each takes as much room as about ${Math.round(LONG_URL / 70)} or more ordinary ones):` }));
+  for (const l of long) {
+    const row = Object.assign(document.createElement('div'), { className: 'long', title: l.url });
+    const del = Object.assign(document.createElement('button'), { type: 'button', className: 'btn', textContent: 'Delete', title: 'Delete this pinned tab' });
+    del.addEventListener('click', async () => {
+      await send({ type: 'deleteEntry', id: l.id });
+      row.remove();
+      if (!list.querySelector('.long')) list.remove();
+    });
+    row.append(
+      Object.assign(document.createElement('span'), { className: 'u', textContent: `${l.where} › ${l.url.replace(/^https?:\/\/(www\.)?/, '')}` }),
+      Object.assign(document.createElement('span'), { className: 'kb', textContent: `~${(l.url.length / 1000).toFixed(1)} KB` }),
+      del,
+    );
+    list.append(row);
+  }
+  box.append(list);
+}
+
 function timeAgo(t) {
   const m = Math.round((Date.now() - t) / 60000);
   if (m < 1) return 'now';
@@ -835,12 +943,13 @@ function openArchiveDialog() {
   });
 }
 
-function openSettingsDialog() {
+function openSettingsDialog(section) {
   const st = layout.settings;
   const sync = runtime.sync || {};
   const bm = runtime.bookmarks || {};
-  const syncText = sync.status === 'ok'
-    ? `Synced ${timeAgo(sync.at)} ago · ${Math.round((sync.bytes || 0) / 1024 * 10) / 10} KB of 100 KB used`
+  const used = kb(syncUsed());
+  const syncText = sync.status === 'ok' ? `Synced ${timeAgo(sync.at)} ago · ${used} of 100 KB used`
+    : sync.status === 'over' ? `Sync is paused: ${used} is over Chrome’s 100 KB limit. Delete some pinned tabs or favorites, or turn off syncing page titles.`
     : sync.status === 'error' ? `Sync error: ${sync.error}` : 'Waiting to sync…';
   const d = openDialog(`
     <form method="dialog">
@@ -862,6 +971,9 @@ function openSettingsDialog() {
       <h3>Sync</h3>
       <p>Spaces, pinned tabs, folders, favorites and settings sync through your Chrome account. Unpinned tabs stay on each computer.</p>
       <p class="sync-status"></p>
+      <div class="sync-details"></div>
+      <label class="check"><input type="checkbox" name="syncTitles"> Sync page titles (the names websites give their pages)</label>
+      <p>Turning this off saves room. Each computer still shows the page titles of tabs it has opened; for others it shows the site name until you open them there. Names you type in by renaming a tab always sync, either way.</p>
       <div class="actions" style="margin-top:6px">
         <button type="button" class="btn" data-act="sync">Sync now</button>
         <button type="button" class="btn" data-act="pull">Replace with synced layout</button>
@@ -900,6 +1012,7 @@ function openSettingsDialog() {
       settings: {
         archiveHours: Number(f.elements.archiveHours.value),
         compactTitles: f.elements.compactTitles.checked,
+        syncTitles: f.elements.syncTitles.checked,
         groupTabsBySpace: f.elements.groupTabsBySpace.checked,
         googleSuggest: f.elements.googleSuggest.checked,
         smartSpaceRules: [...dlg.querySelectorAll('.smart-rule')]
@@ -914,6 +1027,7 @@ function openSettingsDialog() {
   const f = d.querySelector('form');
   f.elements.archiveHours.value = st.archiveHours;
   f.elements.compactTitles.checked = st.compactTitles;
+  f.elements.syncTitles.checked = st.syncTitles !== false;
   f.elements.groupTabsBySpace.checked = st.groupTabsBySpace;
   f.elements.googleSuggest.checked = st.googleSuggest;
   const rules = d.querySelector('.smart-rules');
@@ -936,6 +1050,8 @@ function openSettingsDialog() {
     : bm.at ? `Updated ${timeAgo(bm.at)} ago` : 'Waiting to update…';
   const status = d.querySelector('.sync-status');
   status.textContent = syncText;
+  renderSyncDetails(d);
+  if (section === 'sync') status.previousElementSibling.previousElementSibling.scrollIntoView({ block: 'start' });
   const file = d.querySelector('input[type=file]');
 
   d.addEventListener('click', async e => {

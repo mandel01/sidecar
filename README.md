@@ -82,7 +82,7 @@ The extension ID stays `gkaleojfpcipaofanpfapmknhmfaeeko` on every computer beca
 - Sync goes through `chrome.storage.sync`, so it uses your Google account's Chrome Sync. Your layout isn't sent to any other server. The only request Sidecar makes on its own is the command bar's Google suggestions, which send what you type there to Google; turn them off in Settings.
 - Data is encrypted in transit and at rest by Google. For **end-to-end encryption**, where Google can't read it, set a sync passphrase: Settings → *You and Google* → *Sync and Google services* → *Encryption options* → **Encrypt synced data with your own sync passphrase**. That covers extension data as well as bookmarks and passwords.
 - If two computers change the layout at nearly the same time, the most recent change wins.
-- Chrome allows 100 KB of sync storage. The layout is compressed, so about a thousand pinned tabs and favorites fit. Settings → Sync shows how much is used.
+- Chrome allows 100 KB of sync storage. The layout is compressed, so about a thousand pinned tabs and favorites fit. Settings → Sync shows how much is used and where it goes, and lists any very long addresses. From 80% full, a note above the bottom bar warns you. Over the limit, sync pauses until you free some space, for example by deleting pinned tabs or turning off *Sync page titles*.
 - **Backups:** Settings → *Export…* saves a JSON file, and *Import…* restores it. *Replace with synced layout* forces this computer to take the synced version.
 
 ## iPhone and iPad
@@ -160,7 +160,7 @@ So instead of "assign this space to the Work profile", you put your work spaces 
 
 ## Limitations
 
-- Sync storage holds about a thousand pinned tabs and favorites in total (Chrome allows 100 KB). Settings → Sync shows how much is used.
+- Sync storage holds about a thousand pinned tabs and favorites in total (Chrome allows 100 KB). Sidecar warns from 80% full, and Settings → Sync shows how much is used.
 - Chrome's horizontal tab strip can't be hidden by an extension. Collapsing spaces into tab groups is the closest available option.
 - The sidebar is Chrome's side panel, so it opens per window. Use the keyboard shortcut or the toolbar icon to open it.
 - Favicons for tabs that aren't open come from Chrome's favicon cache. A site you've never visited on this computer shows a globe until you open it once.
