@@ -331,7 +331,11 @@ $('import-btn').addEventListener('click', async () => {
   if (!res || !res.ok) {
     btn.disabled = false;
     btn.textContent = 'Import';
-    alert(`Import failed: ${res ? res.error : 'no response from Sidecar'}`);
+    // No answer at all means Sidecar's background is older than this page: the
+    // folder was updated but Sidecar wasn't reloaded in this Chrome profile.
+    alert(res
+      ? `Import failed: ${res.error}`
+      : 'Import failed: Sidecar needs reloading. Open chrome://extensions in this Chrome profile, click the reload button on the Sidecar card, then try the import again.');
     return;
   }
   const added = res.result;
