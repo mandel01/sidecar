@@ -1492,12 +1492,22 @@ async function runBarAction(s, windowId, action, arg) {
 // another computer) stays. Tabs it closed reopen from Chrome's recently closed
 // list, so they keep their history, and tabs it opened close. Newest first, this
 // computer only, kept in storage.session so a browser restart clears it.
+//
+// To keep each action cheap, a copy leaves out the parts the action didn't
+// change (spaces, favorites, rules, archive; unpinned tabs and bindings are
+// small and always kept), and each entry is stored under its own key, so an
+// action writes only its own entry plus the short list of keys.
 
 const UNDO_LIMIT = 20;
 const UNDO_BYTES = 4_000_000; // of storage.session's 10 MB
 let undoStack = null;
 
 const archiveKey = a => `${a.archivedAt} ${a.url}`;
+
+// Parts of a copy left out when an action didn't change them. Unpinned tabs and
+// bindings are always kept: they're small, and undoing needs exactly what they
+// were before the action.
+const UNDO_OPTIONAL = ['spaces', 'favorites', 'rules', 'archived'];
 
 function undoState(s) {
   return structuredClone({
@@ -1593,8 +1603,16 @@ function mergeList(b, a, n) {
   return order.map(id => out.get(id));
 }
 
+const savedUndoKeys = new Set(); // entries already in storage.session
+
 async function undoList() {
-  if (!undoStack) undoStack = (await chrome.storage.session.get('undo').catch(() => ({}))).undo || [];
+  if (!undoStack) {
+    const { undoKeys = [] } = await chrome.storage.session.get('undoKeys').catch(() => ({}));
+    const got = undoKeys.length ? await chrome.storage.session.get(undoKeys).catch(() => ({})) : {};
+    undoStack = undoKeys.map(k => got[k]).filter(Boolean);
+    for (const e of undoStack) savedUndoKeys.add(e.key);
+    chrome.storage.session.remove('undo').catch(() => {}); // the whole list, as versions before 1.2.4 kept it
+  }
   return undoStack;
 }
 
@@ -1613,17 +1631,31 @@ function saveUndoSoon() {
   });
 }
 
+// Writes the entries not stored yet and the list of keys, then removes
+// entries that have dropped off (oldest first, past 20 or 4 MB) or been undone.
 async function saveUndo() {
   const stack = await undoList();
   for (const e of stack) if (e.size == null) e.size = JSON.stringify(e).length;
   let bytes = stack.reduce((n, e) => n + e.size, 0);
   while (stack.length > UNDO_LIMIT || (stack.length > 1 && bytes > UNDO_BYTES)) bytes -= stack.shift().size;
-  await chrome.storage.session.set({ undo: stack, undoLabel: stack.at(-1)?.label || '' })
-    .catch(e => console.warn('[sidecar] could not save undo', e));
+  const items = { undoKeys: stack.map(e => e.key), undoLabel: stack.at(-1)?.label || '' };
+  for (const e of stack) if (!savedUndoKeys.has(e.key)) items[e.key] = e;
+  try {
+    await chrome.storage.session.set(items);
+    for (const e of stack) savedUndoKeys.add(e.key);
+    const kept = new Set(items.undoKeys);
+    const gone = [...savedUndoKeys].filter(k => !kept.has(k));
+    if (gone.length) {
+      await chrome.storage.session.remove(gone);
+      for (const k of gone) savedUndoKeys.delete(k);
+    }
+  } catch (e) {
+    console.warn('[sidecar] could not save undo', e);
+  }
 }
 
 async function clearUndo() {
-  undoStack = [];
+  (await undoList()).length = 0; // loaded first, so stored entries are known and get removed
   await saveUndo();
 }
 
@@ -1637,16 +1669,19 @@ async function recordUndo(s, label, fn, closedTabId = null) {
   tidy(s); // as persist() will, so the copy matches what's saved
   const after = undoState(s);
   if (deepEqual(before, after)) return result;
-  // The archive is the biggest part of a copy, so it's kept only when it changed.
-  if (deepEqual(before.archived, after.archived)) {
-    delete before.archived;
-    delete after.archived;
-  }
   const liveAfter = await liveTabs();
   const closed = [...heldTabs(before)].filter(id => (liveBefore.has(id) || id === closedTabId) && !liveAfter.has(id));
   // A blank New Tab opened in passing (closing the last tab of a space) stays.
   const opened = [...liveAfter.values()].filter(t => !liveBefore.has(t.id) && !isPopupTab(t) && !isNewTabUrl(tabUrl(t))).map(t => t.id);
-  const entry = { label, at: Date.now(), before, after, closed, opened };
+  const afterSplits = splitPairs(after); // what undoing compares Chrome's split views against
+  // Parts the action didn't change aren't kept: undoing leaves them as they are now.
+  for (const k of UNDO_OPTIONAL) {
+    if (deepEqual(before[k], after[k])) {
+      delete before[k];
+      delete after[k];
+    }
+  }
+  const entry = { key: `undo:${uid()}`, label, at: Date.now(), before, after, afterSplits, closed, opened };
   (await undoList()).push(entry);
   undoDirty = true; // saved by mutate() once the change itself is
   return result;
@@ -1686,10 +1721,11 @@ async function undo(s, windowId) {
   return `${entry.label} Undone`;
 }
 
-async function applyUndo(s, { before, after, closed, opened }, windowId) {
+async function applyUndo(s, { before, after, afterSplits, closed, opened }, windowId) {
   const now = undoState(s);
   const st = {};
   for (const k of Object.keys(before)) st[k] = merge3(before[k], after[k], now[k]);
+  for (const k of UNDO_OPTIONAL) if (!(k in st)) st[k] = now[k]; // left out: the action didn't change it
   if (!st.spaces.length) st.spaces = now.spaces;
 
   // Each pinned entry and each tab in one place only.
@@ -1734,7 +1770,7 @@ async function applyUndo(s, { before, after, closed, opened }, windowId) {
   s.layout.settings.smartSpaceRules = st.rules;
   s.runtime.tabs = st.tabs;
   s.runtime.bindings = st.bindings;
-  if (st.archived) s.runtime.archived = st.archived.map(({ id, ...a }) => a).slice(0, ARCHIVE_LIMIT);
+  if ('archived' in before) s.runtime.archived = st.archived.map(({ id, ...a }) => a).slice(0, ARCHIVE_LIMIT);
 
   // An open tab the undo would leave out of the sidebar stays, as a new unpinned tab.
   for (const id of heldTabs(now)) {
@@ -1755,7 +1791,7 @@ async function applyUndo(s, { before, after, closed, opened }, windowId) {
   if (canSplit()) {
     const key = p => p.join(' ');
     const wanted = splitPairs({ spaces: s.layout.spaces, tabs: s.runtime.tabs, bindings: s.runtime.bindings });
-    const had = splitPairs(after);
+    const had = afterSplits || splitPairs(after);
     const wantedKeys = new Set(wanted.map(key));
     const hadKeys = new Set(had.map(key));
     for (const [l] of had.filter(p => !wantedKeys.has(key(p)) && !wantedKeys.has(key([...p].reverse())))) {
