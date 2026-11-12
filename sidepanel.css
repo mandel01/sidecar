@@ -439,7 +439,7 @@ input.rename {
 
 /* Settings → Sync: meter, where the space goes, very long addresses */
 .sync-meter { height: 8px; border-radius: 4px; background: var(--row-hover); overflow: hidden; margin: 8px 0 4px; }
-.sync-meter .fill { height: 100%; background: var(--space); }
+.sync-meter .fill { height: 100%; background: var(--muted); } /* gray until it needs attention, whatever the space color */
 .sync-meter.near .fill { background: #f59e0b; }
 .sync-meter.over .fill { background: var(--danger); }
 .sync-breakdown { font-size: 12px; color: var(--muted); }

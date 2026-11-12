@@ -896,7 +896,8 @@ function renderSyncDetails(d) {
   meter.append(Object.assign(document.createElement('div'), { className: 'fill' }));
   meter.firstChild.style.width = `${Math.min(100, pct * 100)}%`;
   const breakdown = Object.assign(document.createElement('p'), { className: 'sync-breakdown' });
-  box.replaceChildren(meter, breakdown);
+  const usedText = Object.assign(document.createElement('p'), { textContent: `${kb(used)} of 100 KB used` });
+  box.replaceChildren(usedText, meter, breakdown);
   if (used) syncBreakdown(used).then(parts => {
     breakdown.textContent = parts.map(p => `${p.name} ${p.bytes < 1000 ? '<1 KB' : kb(p.bytes)}`).join(' · ');
   });
@@ -976,7 +977,7 @@ function openSettingsDialog(section) {
   const sync = runtime.sync || {};
   const bm = runtime.bookmarks || {};
   const used = kb(syncUsed());
-  const syncText = sync.status === 'ok' ? `Synced ${timeAgo(sync.at)} ago · ${used} of 100 KB used`
+  const syncText = sync.status === 'ok' ? `Synced ${timeAgo(sync.at)} ago`
     : sync.status === 'over' ? `Sync is paused: ${used} is over Chrome’s 100 KB limit. Delete some pinned tabs or favorites, or turn off syncing page titles.`
     : sync.status === 'error' ? `Sync error: ${sync.error}` : 'Waiting to sync…';
   const d = openDialog(`
@@ -996,12 +997,12 @@ function openSettingsDialog(section) {
         <button type="button" class="btn" data-act="add-rule">Add rule</button>
       </div>
 
-      <h3>Sync</h3>
+      <h3 class="sync-heading">Sync</h3>
       <p>Spaces, pinned tabs, folders, favorites and settings sync through your Chrome account. Unpinned tabs stay on each computer.</p>
-      <p class="sync-status"></p>
       <div class="sync-details"></div>
       <label class="check"><input type="checkbox" name="syncTitles"> Sync page titles (the names websites give their pages)</label>
       <p>Turning this off saves room. Each computer still shows the page titles of tabs it has opened; for others it shows the site name until you open them there. Names you type in by renaming a tab always sync, either way.</p>
+      <p class="sync-status"></p>
       <div class="actions" style="margin-top:6px">
         <button type="button" class="btn" data-act="sync">Sync now</button>
         <button type="button" class="btn" data-act="pull">Replace with synced layout</button>
@@ -1079,7 +1080,7 @@ function openSettingsDialog(section) {
   const status = d.querySelector('.sync-status');
   status.textContent = syncText;
   renderSyncDetails(d);
-  if (section === 'sync') status.previousElementSibling.previousElementSibling.scrollIntoView({ block: 'start' });
+  if (section === 'sync') d.querySelector('.sync-heading').scrollIntoView({ block: 'start' });
   const file = d.querySelector('input[type=file]');
 
   d.addEventListener('click', async e => {
@@ -1087,7 +1088,8 @@ function openSettingsDialog(section) {
     if (act === 'sync') {
       status.textContent = 'Syncing…';
       const s = await send({ type: 'syncNow' });
-      status.textContent = s.status === 'ok' ? 'Synced just now.' : `Sync error: ${s.error}`;
+      status.textContent = s.status === 'ok' ? 'Synced just now.'
+        : s.status === 'over' ? 'Sync is paused: still over Chrome’s 100 KB limit.' : `Sync error: ${s.error}`;
     } else if (act === 'pull') {
       if (confirm('Replace this computer’s spaces, pinned tabs and favorites with the last synced version?')) {
         await send({ type: 'pullSync' });
