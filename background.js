@@ -40,6 +40,12 @@ function mutate(fn) {
     const s = await load();
     const result = await fn(s);
     await persist(s);
+    // The change is saved (so the sidebar can redraw) before Undo's copy of it,
+    // which is the bigger, slower write.
+    if (undoDirty) {
+      undoDirty = false;
+      saveUndoSoon();
+    }
     return result;
   });
   queue = run.catch(err => console.error('[sidecar]', err));
@@ -1592,8 +1598,24 @@ async function undoList() {
   return undoStack;
 }
 
+// Set when an action adds an Undo entry; mutate() then saves the list after
+// the change itself. Saves run one at a time, and one already waiting covers
+// any entries added meanwhile (it saves the list as it is when it runs).
+let undoDirty = false;
+let undoSaving = Promise.resolve();
+let undoSaveWaiting = false;
+function saveUndoSoon() {
+  if (undoSaveWaiting) return;
+  undoSaveWaiting = true;
+  undoSaving = undoSaving.then(() => {
+    undoSaveWaiting = false;
+    return saveUndo();
+  });
+}
+
 async function saveUndo() {
   const stack = await undoList();
+  for (const e of stack) if (e.size == null) e.size = JSON.stringify(e).length;
   let bytes = stack.reduce((n, e) => n + e.size, 0);
   while (stack.length > UNDO_LIMIT || (stack.length > 1 && bytes > UNDO_BYTES)) bytes -= stack.shift().size;
   await chrome.storage.session.set({ undo: stack, undoLabel: stack.at(-1)?.label || '' })
@@ -1625,9 +1647,8 @@ async function recordUndo(s, label, fn, closedTabId = null) {
   // A blank New Tab opened in passing (closing the last tab of a space) stays.
   const opened = [...liveAfter.values()].filter(t => !liveBefore.has(t.id) && !isPopupTab(t) && !isNewTabUrl(tabUrl(t))).map(t => t.id);
   const entry = { label, at: Date.now(), before, after, closed, opened };
-  entry.size = JSON.stringify(entry).length;
   (await undoList()).push(entry);
-  await saveUndo();
+  undoDirty = true; // saved by mutate() once the change itself is
   return result;
 }
 

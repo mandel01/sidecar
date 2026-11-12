@@ -58,6 +58,33 @@ async function refresh() {
   render();
 }
 
+// Rows closed or deleted from the sidebar disappear at once, without waiting
+// for the background (slow when Chrome is busy). Chrome reports the tab closed
+// before the background has saved, and the redraw that follows would bring the
+// row back grayed out, so they stay hidden until the saved state drops them,
+// or 5 seconds pass (in case it never does).
+const removing = new Map(); // entry or record id -> when hidden
+
+function hideRow(row) {
+  removing.set(row.dataset.id, Date.now());
+  row.remove();
+}
+
+function stillThere(id) {
+  if (runtime.tabs.some(r => r.id === id)) return true;
+  let found = layout.favorites.some(f => f.id === id);
+  for (const sp of layout.spaces) walk(sp.pinned, n => { if (n.id === id) found = true; });
+  return found;
+}
+
+function hideRemoving() {
+  const now = Date.now();
+  for (const [id, at] of removing) {
+    if (now - at > 5000 || !stillThere(id)) removing.delete(id);
+    else document.querySelectorAll(`.row[data-id="${CSS.escape(id)}"], .fav[data-id="${CSS.escape(id)}"]`).forEach(r => r.remove());
+  }
+}
+
 let refreshTimer = null;
 function scheduleRefresh() {
   clearTimeout(refreshTimer);
@@ -101,6 +128,7 @@ function render() {
   renderPinned(space);
   renderUnpinned(space);
   renderSpaces(space);
+  hideRemoving();
   renderSyncBanner();
   const muteBtn = $('mute-mode-btn');
   // Crossed out in Mute Mode; otherwise waves only while some tab is heard.
@@ -1144,6 +1172,7 @@ document.addEventListener('click', e => {
   if (row && btn) {
     const { id } = row.dataset;
     const type = { minimize: 'minimize', delete: 'deleteEntry', close: 'closeTab' }[btn.dataset.action];
+    if (type !== 'minimize') hideRow(row); // − keeps a pinned tab's row, just closes the tab
     send({ type, id });
     return;
   }
@@ -1199,8 +1228,10 @@ document.addEventListener('auxclick', e => {
   if (e.button !== 1) return;
   const row = rowOf(e.target);
   if (!row || row.dataset.type === 'folder') return;
-  if (row.dataset.kind === 'tab') send({ type: 'closeTab', id: row.dataset.id });
-  else send({ type: 'minimize', id: row.dataset.id });
+  if (row.dataset.kind === 'tab') {
+    send({ type: 'closeTab', id: row.dataset.id });
+    hideRow(row);
+  } else send({ type: 'minimize', id: row.dataset.id });
 });
 
 document.addEventListener('dblclick', e => {
