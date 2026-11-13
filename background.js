@@ -818,7 +818,7 @@ function insertTree(nodes, node, refId, position) {
     if (position === 'start') nodes.unshift(node);
     else nodes.push(node);
   } else if (position === 'inside' && f.node.type === 'folder') {
-    f.node.children.unshift(node);
+    f.node.children.push(node);
     f.node.collapsed = false;
   } else {
     f.list.splice(position === 'after' ? f.index + 1 : f.index, 0, node);
@@ -931,7 +931,7 @@ async function moveMany(s, items, target) {
     for (const it of items.filter(i => i.kind === 'tab').reverse()) await move(s, it, target);
     return;
   }
-  const reverse = ['after', 'inside', 'start'].includes(target.position);
+  const reverse = ['after', 'start'].includes(target.position);
   for (const it of reverse ? [...items].reverse() : items) await move(s, it, target);
 }
 
@@ -1946,16 +1946,20 @@ const handlers = {
     b.url = t.url;
   },
 
-  newFolder: (s, { spaceId, parentId }) => {
+  // At the bottom of the space's pinned tabs or of a parent folder, or
+  // just above the pinned node beforeId.
+  newFolder: (s, { spaceId, parentId, beforeId }) => {
     const sp = spaceById(s, spaceId);
     if (!sp) return null;
     const folder = { id: uid(), type: 'folder', name: 'New Folder', collapsed: false, children: [] };
     const parent = parentId ? findNode(sp.pinned, parentId)?.node : null;
     if (parent && parent.type === 'folder') {
-      parent.children.unshift(folder);
+      parent.children.push(folder);
       parent.collapsed = false;
+    } else if (beforeId) {
+      insertTree(sp.pinned, folder, splitOfEntry(s, beforeId)?.node.id || beforeId, 'before');
     } else {
-      sp.pinned.unshift(folder);
+      sp.pinned.push(folder);
     }
     return folder.id;
   },
@@ -2011,8 +2015,12 @@ const handlers = {
       if (url) await chrome.tabs.create({ windowId, url, active: false }).catch(() => {});
     }
   },
+  // Where the topmost pinned item was (items come in sidebar order), else at
+  // the bottom of the pinned tabs.
   folderFrom: async (s, { items, spaceId }) => {
-    const id = handlers.newFolder(s, { spaceId, parentId: null });
+    const sp = spaceById(s, spaceId);
+    const top = sp && items.find(it => it.kind !== 'tab' && findNode(sp.pinned, it.id));
+    const id = handlers.newFolder(s, { spaceId, parentId: null, beforeId: top?.id });
     if (id) await moveMany(s, items, { zone: 'pinned', spaceId, refId: id, position: 'inside' });
     return id;
   },
