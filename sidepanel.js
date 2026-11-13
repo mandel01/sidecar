@@ -1405,15 +1405,35 @@ document.addEventListener('dragstart', e => {
   setDragChip(e, src, multi ? `${multi.length} tabs` : undefined);
   // Changing layout during dragstart (body.dragging expands an empty Favorites bar)
   // makes Chrome cancel the drag, so wait a frame, and skip if it already ended.
+  d.src = src;
   requestAnimationFrame(() => {
-    if (drag !== d) return;
-    document.body.classList.add('dragging');
-    src.classList.add('drag-src');
-    if (d.keys) for (const r of selectableRows()) if (d.keys.has(keyOf(r))) r.classList.add('drag-src');
+    if (drag === d) showDragging(true);
   });
 });
 
+// The dragging look: an expanded Favorites bar and dimmed source rows.
+function showDragging(on) {
+  document.body.classList.toggle('dragging', on);
+  if (!on) {
+    document.querySelectorAll('.drag-src').forEach(n => n.classList.remove('drag-src'));
+    return;
+  }
+  drag.src.classList.add('drag-src');
+  if (drag.keys) for (const r of selectableRows()) if (drag.keys.has(keyOf(r))) r.classList.add('drag-src');
+}
+
+// Esc cancels a drag at once, but dragend only comes after macOS slides the
+// drag image back, which takes a while. The cancel sends a dragleave with
+// nowhere to go first, as does leaving the panel, so drop the drag look then.
+// If the drag comes back in, dragover brings it back.
+document.addEventListener('dragleave', e => {
+  if (!drag || e.relatedTarget) return;
+  clearIndicator();
+  showDragging(false);
+});
+
 document.addEventListener('dragover', e => {
+  if (drag && !document.body.classList.contains('dragging')) showDragging(true);
   const drop = computeDrop(e);
   if (!drop) {
     clearIndicator();
@@ -1449,8 +1469,7 @@ document.addEventListener('drop', e => {
 function endDrag() {
   clearIndicator();
   drag = null;
-  document.body.classList.remove('dragging');
-  document.querySelectorAll('.drag-src').forEach(n => n.classList.remove('drag-src'));
+  showDragging(false);
   if (dirty) refresh();
 }
 
