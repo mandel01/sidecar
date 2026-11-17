@@ -441,7 +441,6 @@ function multiMenu(x, y) {
   const [a, b] = refs;
   // [moved tab, tab it joins, which side the moved one goes], keeping their order.
   const splitArgs = a?.kind === 'tab' || b?.kind !== 'tab' ? [b, a, 'right'] : [a, b, 'left'];
-  const others = layout.spaces.filter(sp => sp.id !== space.id);
   showMenu(x, y, [
     tabs.length && { text: `Copy ${tabs.length} links`, run: () => navigator.clipboard.writeText(tabs.map(t => t.url).join('\n')).then(() => toast(`${tabs.length} links copied`)) },
     !hasFolder && { text: `Duplicate ${n} tabs`, run: () => send({ type: 'duplicateMany', items: refs, windowId }) },
@@ -454,10 +453,10 @@ function multiMenu(x, y) {
       const [item, target, side] = splitArgs;
       send({ type: 'split', item, target: { ...target, side }, windowId });
     } },
-    ...(others.length ? ['-', { label: 'Move to space' }, ...others.map(sp => ({
-      text: `${sp.icon || '•'}  ${sp.name}`,
-      run: () => { done(); send({ type: 'moveMany', items: refs, target: { zone: 'space', spaceId: sp.id } }).then(smartSpaceToast); },
-    }))] : []),
+    spaceTargets(null, null, space.id, sp => {
+      done();
+      send({ type: 'moveMany', items: refs, target: { zone: 'space', spaceId: sp.id } }).then(smartSpaceToast);
+    }),
     '-',
     closable.length && { text: `Close ${closable.length} ${tabsWord(closable.length)}`, danger: !pinnedIds.length, run: () => { done(); send({ type: 'closeMany', items: closable }); } },
     hasFolder && { text: `Delete ${n} items`, danger: true, run: () => {
@@ -576,47 +575,112 @@ function findIn(nodes, id) {
 // ---------------------------------------------------------------------------
 // Context menu
 
+// items: '-' for a line, { label } for a heading, { text, run, danger } for an
+// action, or { text, sub: items } for a submenu that opens beside it.
 function showMenu(x, y, items) {
   const menu = els.menu;
-  menu.replaceChildren();
-  for (const it of items) {
-    if (!it) continue;
-    if (it === '-') {
-      menu.append(Object.assign(document.createElement('div'), { className: 'sep' }));
-    } else if (it.label && !it.run) {
-      menu.append(Object.assign(document.createElement('div'), { className: 'label', textContent: it.label }));
-    } else {
-      const b = document.createElement('button');
-      b.className = 'item' + (it.danger ? ' danger' : '');
-      b.textContent = it.text;
-      b.addEventListener('click', () => {
-        hideMenu();
-        it.run();
-      });
-      menu.append(b);
-    }
-  }
+  fillMenu(menu, items);
   menu.hidden = false;
   const r = menu.getBoundingClientRect();
   menu.style.left = Math.max(4, Math.min(x, innerWidth - r.width - 4)) + 'px';
   menu.style.top = Math.max(4, Math.min(y, innerHeight - r.height - 4)) + 'px';
+  // A right-click doesn't move keyboard focus into the side panel, so without
+  // this, Esc goes to the web page and a click there doesn't reach the panel.
+  menu.focus({ preventScroll: true });
+}
+
+// Clicking the web page or another window takes focus away from the panel.
+window.addEventListener('blur', () => hideMenu());
+document.addEventListener('visibilitychange', () => hideMenu());
+
+// Some pages (Google Sheets, say) keep focus where it was when clicked, so the
+// panel never hears about the click. Close once the pointer has been out of
+// the panel for a moment; a quick overshoot and back keeps the menu.
+let menuLeaveTimer = null;
+document.addEventListener('mouseout', e => {
+  if (e.relatedTarget || els.menu.hidden) return;
+  clearTimeout(menuLeaveTimer);
+  menuLeaveTimer = setTimeout(hideMenu, 400);
+});
+document.addEventListener('mouseover', () => clearTimeout(menuLeaveTimer));
+
+function fillMenu(el, items) {
+  el.replaceChildren();
+  for (const it of items) {
+    if (!it) continue;
+    if (it === '-') {
+      el.append(Object.assign(document.createElement('div'), { className: 'sep' }));
+    } else if (it.label && !it.run) {
+      el.append(Object.assign(document.createElement('div'), { className: 'label', textContent: it.label }));
+    } else {
+      const b = document.createElement('button');
+      b.className = 'item' + (it.danger ? ' danger' : '') + (it.sub ? ' has-sub' : '');
+      b.textContent = it.text;
+      if (it.sub) {
+        b.append(Object.assign(document.createElement('span'), { className: 'chevron', textContent: '›' }));
+        b.addEventListener('mouseenter', () => showSubmenu(b, it.sub));
+        b.addEventListener('click', () => showSubmenu(b, it.sub));
+      } else {
+        b.addEventListener('click', () => {
+          hideMenu();
+          it.run();
+        });
+        // Pointing at another item of the main menu closes its submenu.
+        if (el === els.menu) b.addEventListener('mouseenter', closeSubmenu);
+      }
+      el.append(b);
+    }
+  }
+}
+
+// To the right of its item, or if the panel is too narrow, against the right
+// edge just below the item, so the item stays visible.
+// It lives inside the menu, so clicks in it don't count as clicks outside.
+function showSubmenu(btn, items) {
+  closeSubmenu();
+  const sub = Object.assign(document.createElement('div'), { className: 'submenu' });
+  fillMenu(sub, items);
+  els.menu.append(sub);
+  btn.classList.add('open');
+  const r = btn.getBoundingClientRect();
+  const s = sub.getBoundingClientRect();
+  let left = r.right + 4, top = r.top - 5;
+  if (left + s.width > innerWidth - 4) {
+    left = innerWidth - s.width - 4;
+    top = r.bottom;
+  }
+  sub.style.left = left + 'px';
+  sub.style.top = Math.max(4, Math.min(top, innerHeight - s.height - 4)) + 'px';
+}
+
+function closeSubmenu() {
+  els.menu.querySelector('.submenu')?.remove();
+  els.menu.querySelector('.has-sub.open')?.classList.remove('open');
 }
 
 function hideMenu() {
+  closeSubmenu();
   els.menu.hidden = true;
 }
 
-function spaceTargets(kind, id, exclude) {
+// A "Move to space" submenu of the other spaces, or nothing if there are none.
+function spaceTargets(kind, id, exclude, run = sp => send({ type: 'moveToSpace', kind, id, spaceId: sp.id }).then(smartSpaceToast)) {
   const others = layout.spaces.filter(sp => sp.id !== exclude);
-  if (!others.length) return [];
-  return ['-', { label: 'Move to space' }, ...others.map(sp => ({
-    text: `${sp.icon || '•'}  ${sp.name}`,
-    run: () => send({ type: 'moveToSpace', kind, id, spaceId: sp.id }).then(smartSpaceToast),
-  }))];
+  if (!others.length) return null;
+  return { text: 'Move to space', sub: others.map(sp => ({ text: `${sp.icon || '•'}  ${sp.name}`, run: () => run(sp) })) };
 }
 
 function copy(url) {
   navigator.clipboard.writeText(url).then(() => toast('Link copied'));
+}
+
+// A favorite's or pinned tab's saved URL.
+function urlMenu(id, item) {
+  return { text: 'URL', sub: [
+    { text: 'Copy', run: () => copy(item.url) },
+    { text: 'Edit…', run: () => editEntryUrl(id, item) },
+    item.live && { text: 'Set to current page', run: () => send({ type: 'setEntryUrl', id }) },
+  ] };
 }
 
 function rowMenu(row, x, y) {
@@ -635,20 +699,18 @@ function rowMenu(row, x, y) {
       { text: 'Add to Favorites', run: () => send({ type: 'favorite', kind: 'tab', id }) },
       { text: 'Copy link', run: () => copy(item.url) },
       { text: 'Duplicate tab', run: () => send({ type: 'duplicateMany', items: [{ kind, id }], windowId }) },
-      ...spaceTargets('tab', id, space.id),
+      spaceTargets('tab', id, space.id),
       '-',
       { text: 'Close tab', danger: true, run: () => send({ type: 'closeTab', id }) },
     ]);
   } else if (kind === 'fav') {
     showMenu(x, y, [
       { text: 'Rename', run: () => renameFavorite(id, item) },
-      { text: 'Copy link', run: () => copy(item.url) },
-      item.live && { text: 'Set to current page', run: () => send({ type: 'setEntryUrl', id }) },
-      { text: 'Edit URL…', run: () => editEntryUrl(id, item) },
-      item.live && { text: 'Close tab (keep favorite)', run: () => send({ type: 'minimize', id }) },
+      urlMenu(id, item),
+      { text: 'Unfavorite', run: () => send({ type: 'unfavorite', id, windowId }) },
       '-',
-      { text: 'Move to pinned in this space', run: () => send({ type: 'unfavorite', id, windowId }) },
-      { text: 'Remove from Favorites', danger: true, run: () => send({ type: 'deleteEntry', id }) },
+      item.live && { text: 'Close tab', run: () => send({ type: 'minimize', id }) },
+      { text: 'Delete', danger: true, run: () => send({ type: 'deleteEntry', id }) },
     ]);
   } else if (item.folder) {
     const tabs = selectedTabs([{ kind, id, folder: true }]);
@@ -658,24 +720,22 @@ function rowMenu(row, x, y) {
       rename,
       { text: 'New folder inside', run: () => newFolder(id) },
       tabs.length && { text: `Copy ${tabs.length} ${tabs.length === 1 ? 'link' : 'links'}`, run: () => navigator.clipboard.writeText(tabs.map(t => t.url).join('\n')).then(() => toast(`${tabs.length} ${tabs.length === 1 ? 'link' : 'links'} copied`)) },
-      ...spaceTargets('pinned', id, space.id),
+      spaceTargets('pinned', id, space.id),
       '-',
-      open.length && { text: `Close ${open.length} open ${word(open.length)} (stay pinned)`, run: () => send({ type: 'closeMany', items: open }) },
+      open.length && { text: `Close ${open.length} open ${word(open.length)}`, run: () => send({ type: 'closeMany', items: open }) },
       { text: 'Delete folder and its tabs', danger: true, run: () => confirmAction(`Delete “${item.node.name}” and everything in it?`, () => send({ type: 'deleteEntry', id })) },
     ]);
   } else {
     showMenu(x, y, [
       rename,
-      item.live && { text: 'Set pinned URL to current page', run: () => send({ type: 'setEntryUrl', id }) },
-      { text: 'Edit pinned URL…', run: () => editEntryUrl(id, item) },
-      { text: 'Copy link', run: () => copy(item.url) },
+      urlMenu(id, item),
       { text: 'Duplicate tab', run: () => send({ type: 'duplicateMany', items: [{ kind, id }], windowId }) },
       { text: 'Add to Favorites', run: () => send({ type: 'favorite', kind: 'pinned', id }) },
       { text: 'Unpin', run: () => send({ type: 'unpin', id, windowId }) },
-      ...spaceTargets('pinned', id, space.id),
+      spaceTargets('pinned', id, space.id),
       '-',
-      item.live && { text: 'Close tab (stays pinned)', run: () => send({ type: 'minimize', id }) },
-      { text: 'Delete pinned tab', danger: true, run: () => send({ type: 'deleteEntry', id }) },
+      item.live && { text: 'Close tab', run: () => send({ type: 'minimize', id }) },
+      { text: 'Delete', danger: true, run: () => send({ type: 'deleteEntry', id }) },
     ]);
   }
 }
@@ -688,9 +748,7 @@ function splitHalfMenu(row, splitEl, item, space) {
   const moveSplit = target => send({ type: 'move', item: { kind: 'split', id: split }, target: { spaceId: space.id, ...target } });
   return [
     { text: 'Rename', run: () => startRename(row) },
-    pinned && item.live && { text: 'Set pinned URL to current page', run: () => send({ type: 'setEntryUrl', id }) },
-    pinned && { text: 'Edit pinned URL…', run: () => editEntryUrl(id, item) },
-    { text: 'Copy link', run: () => copy(item.url) },
+    pinned ? urlMenu(id, item) : { text: 'Copy link', run: () => copy(item.url) },
     '-',
     { label: 'Split view' },
     { text: 'Swap sides', run: () => send({ type: 'swapSplit', id: split }) },
@@ -698,10 +756,10 @@ function splitHalfMenu(row, splitEl, item, space) {
     pinned
       ? { text: 'Unpin split view', run: () => moveSplit({ zone: 'unpinned', position: 'start' }) }
       : { text: 'Pin split view', run: () => moveSplit({ zone: 'pinned', position: 'end' }) },
-    ...spaceTargets('split', split, space.id),
+    spaceTargets('split', split, space.id),
     '-',
-    pinned && item.live && { text: 'Close tab (stays pinned)', run: () => send({ type: 'minimize', id }) },
-    pinned && { text: 'Close split view (stays pinned)', run: () => send({ type: 'minimize', id: split }) },
+    pinned && item.live && { text: 'Close tab', run: () => send({ type: 'minimize', id }) },
+    pinned && { text: 'Close split view', run: () => send({ type: 'minimize', id: split }) },
     pinned && { text: 'Delete this pinned tab', danger: true, run: () => send({ type: 'deleteEntry', id }) },
     pinned && { text: 'Delete split view', danger: true, run: () => send({ type: 'deleteEntry', id: split }) },
     !pinned && { text: 'Close tab', danger: true, run: () => send({ type: 'closeTab', id }) },
