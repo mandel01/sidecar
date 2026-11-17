@@ -442,7 +442,7 @@ function multiMenu(x, y) {
   // [moved tab, tab it joins, which side the moved one goes], keeping their order.
   const splitArgs = a?.kind === 'tab' || b?.kind !== 'tab' ? [b, a, 'right'] : [a, b, 'left'];
   showMenu(x, y, [
-    tabs.length && { text: `Copy ${tabs.length} links`, run: () => navigator.clipboard.writeText(tabs.map(t => t.url).join('\n')).then(() => toast(`${tabs.length} links copied`)) },
+    tabs.length && { text: `Copy ${tabs.length} URLs`, run: () => navigator.clipboard.writeText(tabs.map(t => t.url).join('\n')).then(() => toast(`${tabs.length} URLs copied`)) },
     !hasFolder && { text: `Duplicate ${n} tabs`, run: () => send({ type: 'duplicateMany', items: refs, windowId }) },
     { text: `New folder with ${n} ${hasFolder ? 'items' : 'tabs'}`, run: async () => {
       done();
@@ -671,7 +671,7 @@ function spaceTargets(kind, id, exclude, run = sp => send({ type: 'moveToSpace',
 }
 
 function copy(url) {
-  navigator.clipboard.writeText(url).then(() => toast('Link copied'));
+  navigator.clipboard.writeText(url).then(() => toast('URL copied'));
 }
 
 // A favorite's or pinned tab's saved URL.
@@ -695,13 +695,13 @@ function rowMenu(row, x, y) {
   if (kind === 'tab') {
     showMenu(x, y, [
       rename,
-      { text: 'Pin tab', run: () => send({ type: 'pinTab', id }) },
+      { text: 'Copy URL', run: () => copy(item.url) },
+      { text: 'Duplicate', run: () => send({ type: 'duplicateMany', items: [{ kind, id }], windowId }) },
       { text: 'Add to Favorites', run: () => send({ type: 'favorite', kind: 'tab', id }) },
-      { text: 'Copy link', run: () => copy(item.url) },
-      { text: 'Duplicate tab', run: () => send({ type: 'duplicateMany', items: [{ kind, id }], windowId }) },
+      { text: 'Pin', run: () => send({ type: 'pinTab', id }) },
       spaceTargets('tab', id, space.id),
       '-',
-      { text: 'Close tab', danger: true, run: () => send({ type: 'closeTab', id }) },
+      { text: 'Close', danger: true, run: () => send({ type: 'closeTab', id }) },
     ]);
   } else if (kind === 'fav') {
     showMenu(x, y, [
@@ -709,7 +709,7 @@ function rowMenu(row, x, y) {
       urlMenu(id, item),
       { text: 'Unfavorite', run: () => send({ type: 'unfavorite', id, windowId }) },
       '-',
-      item.live && { text: 'Close tab', run: () => send({ type: 'minimize', id }) },
+      item.live && { text: 'Close', run: () => send({ type: 'minimize', id }) },
       { text: 'Delete', danger: true, run: () => send({ type: 'deleteEntry', id }) },
     ]);
   } else if (item.folder) {
@@ -719,22 +719,22 @@ function rowMenu(row, x, y) {
     showMenu(x, y, [
       rename,
       { text: 'New folder inside', run: () => newFolder(id) },
-      tabs.length && { text: `Copy ${tabs.length} ${tabs.length === 1 ? 'link' : 'links'}`, run: () => navigator.clipboard.writeText(tabs.map(t => t.url).join('\n')).then(() => toast(`${tabs.length} ${tabs.length === 1 ? 'link' : 'links'} copied`)) },
+      tabs.length && { text: `Copy ${tabs.length} ${tabs.length === 1 ? 'URL' : 'URLs'}`, run: () => navigator.clipboard.writeText(tabs.map(t => t.url).join('\n')).then(() => toast(`${tabs.length} ${tabs.length === 1 ? 'URL' : 'URLs'} copied`)) },
       spaceTargets('pinned', id, space.id),
       '-',
       open.length && { text: `Close ${open.length} open ${word(open.length)}`, run: () => send({ type: 'closeMany', items: open }) },
-      { text: 'Delete folder and its tabs', danger: true, run: () => confirmAction(`Delete “${item.node.name}” and everything in it?`, () => send({ type: 'deleteEntry', id })) },
+      { text: 'Delete', danger: true, run: () => confirmAction(`Delete “${item.node.name}” and everything in it?`, () => send({ type: 'deleteEntry', id })) },
     ]);
   } else {
     showMenu(x, y, [
       rename,
       urlMenu(id, item),
-      { text: 'Duplicate tab', run: () => send({ type: 'duplicateMany', items: [{ kind, id }], windowId }) },
+      { text: 'Duplicate', run: () => send({ type: 'duplicateMany', items: [{ kind, id }], windowId }) },
       { text: 'Add to Favorites', run: () => send({ type: 'favorite', kind: 'pinned', id }) },
       { text: 'Unpin', run: () => send({ type: 'unpin', id, windowId }) },
       spaceTargets('pinned', id, space.id),
       '-',
-      item.live && { text: 'Close tab', run: () => send({ type: 'minimize', id }) },
+      item.live && { text: 'Close', run: () => send({ type: 'minimize', id }) },
       { text: 'Delete', danger: true, run: () => send({ type: 'deleteEntry', id }) },
     ]);
   }
@@ -748,7 +748,7 @@ function splitHalfMenu(row, splitEl, item, space) {
   const moveSplit = target => send({ type: 'move', item: { kind: 'split', id: split }, target: { spaceId: space.id, ...target } });
   return [
     { text: 'Rename', run: () => startRename(row) },
-    pinned ? urlMenu(id, item) : { text: 'Copy link', run: () => copy(item.url) },
+    pinned ? urlMenu(id, item) : { text: 'Copy URL', run: () => copy(item.url) },
     '-',
     { label: 'Split view' },
     { text: 'Swap sides', run: () => send({ type: 'swapSplit', id: split }) },
@@ -760,7 +760,7 @@ function splitHalfMenu(row, splitEl, item, space) {
     '-',
     pinned && item.live && { text: 'Close tab', run: () => send({ type: 'minimize', id }) },
     pinned && { text: 'Close split view', run: () => send({ type: 'minimize', id: split }) },
-    pinned && { text: 'Delete this pinned tab', danger: true, run: () => send({ type: 'deleteEntry', id }) },
+    pinned && { text: 'Delete tab', danger: true, run: () => send({ type: 'deleteEntry', id }) },
     pinned && { text: 'Delete split view', danger: true, run: () => send({ type: 'deleteEntry', id: split }) },
     !pinned && { text: 'Close tab', danger: true, run: () => send({ type: 'closeTab', id }) },
   ];
