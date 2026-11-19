@@ -2117,11 +2117,19 @@ const handlers = {
     scheduleAllGroups();
   },
 
-  reorderSpace: (s, { id, dir }) => {
+  // One step left or right (dir), or dragged next to another space (refId, position).
+  reorderSpace: (s, { id, dir, refId, position }) => {
     const list = s.layout.spaces;
     const i = list.findIndex(sp => sp.id === id);
+    if (i < 0) return;
+    if (refId) {
+      if (refId === id) return;
+      const [sp] = list.splice(i, 1);
+      insertList(list, sp, refId, position);
+      return;
+    }
     const j = i + dir;
-    if (i < 0 || j < 0 || j >= list.length) return;
+    if (j < 0 || j >= list.length) return;
     [list[i], list[j]] = [list[j], list[i]];
   },
 

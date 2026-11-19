@@ -491,6 +491,23 @@ input.rename {
 }
 
 .space-btn.drop-inside { opacity: 1; }
+.space-btn.held { opacity: 1; transform: scale(1.15); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); background: var(--panel); transition: transform 0.12s; }
+body.space-dragging { user-select: none; cursor: grabbing; }
+/* Upright, with the ring at the top. */
+.space-btn.drop-before::before, .space-btn.drop-after::after {
+  top: 0;
+  bottom: 3px;
+  width: 9px;
+  height: auto;
+  left: auto;
+  right: auto;
+  --c-line: color-mix(in srgb, var(--drop, var(--space)) 70%, black);
+  background:
+    radial-gradient(circle at 50% 4.5px, var(--bg) 2px, var(--c-line) 2.5px, var(--c-line) 4px, transparent 4.5px),
+    linear-gradient(var(--c-line), var(--c-line)) 50% 8px / 3px calc(100% - 8px) no-repeat;
+}
+.space-btn.drop-before::before { left: -5.5px; }
+.space-btn.drop-after::after { right: -5.5px; }
 
 /* Context menu ---------------------------------------------------------- */
 
@@ -595,6 +612,7 @@ dialog input.short { width: 90px; display: inline-block; margin: 0 6px 0 0; }
 }
 .smart-rule .btn { flex: none; padding: 4px 9px; }
 
+.field-hint { margin: -6px 0 8px; font-size: 11px; color: var(--muted); }
 .icon-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; margin: -4px 0 12px; }
 .icon-grid button { font-size: 15px; padding: 3px 0; border-radius: 6px; }
 .icon-grid button:hover { background: var(--row-hover); }

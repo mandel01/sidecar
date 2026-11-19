@@ -854,6 +854,10 @@ function openDialog(html, onClose) {
   return d;
 }
 
+// The keyboard shortcut for the system emoji picker. A page can't open it
+// itself, but it works in any text field.
+const EMOJI_KEYS = /Mac/.test(navigator.platform) ? 'fn E or ⌃⌘Space' : /Win/.test(navigator.platform) ? 'Windows key + .' : '';
+
 function openSpaceDialog(space) {
   const isNew = !space;
   const used = new Set(layout.spaces.map(s => s.color));
@@ -866,7 +870,8 @@ function openSpaceDialog(space) {
     <form method="dialog">
       <h2>${isNew ? 'New space' : 'Edit space'}</h2>
       <label>Name<input type="text" name="name" required maxlength="40" placeholder="e.g. Travel"></label>
-      <label>Icon (any emoji)<input type="text" name="icon" maxlength="8"></label>
+      <label>Icon<input type="text" name="icon" placeholder="One emoji or letter"></label>
+      <div class="field-hint">${EMOJI_KEYS ? `${EMOJI_KEYS} opens the emoji picker, or pick one:` : 'Type one, or pick one:'}</div>
       <div class="icon-grid">${ICON_PRESETS.map(i => `<button type="button" data-icon="${i}">${i}</button>`).join('')}</div>
       <div>Color</div>
       <div class="swatches" style="margin-top:6px">${GROUP_COLORS.map(c => `
@@ -891,6 +896,17 @@ function openSpaceDialog(space) {
   const f = d.querySelector('form');
   f.elements.name.value = data.name;
   f.elements.icon.value = data.icon;
+  // One character: what was just typed or picked replaces what was there. An
+  // emoji can be several code points (skin tones, flags, families), so count
+  // what shows as one.
+  f.elements.icon.addEventListener('input', e => {
+    const el = e.target;
+    const chars = [...new Intl.Segmenter().segment(el.value)];
+    if (chars.length < 2) return;
+    // The one just before the cursor is the one just typed.
+    const typed = chars.find(c => c.index + c.segment.length === el.selectionStart) || chars.at(-1);
+    el.value = typed.segment;
+  });
   f.querySelector(`input[value="${data.color}"]`).checked = true;
   d.querySelector('.icon-grid').addEventListener('click', e => {
     const b = e.target.closest('[data-icon]');
@@ -1352,6 +1368,7 @@ document.addEventListener('contextmenu', e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     hideMenu();
+    endSpaceDrag(false);
     if (!editing && !els.dialog.open) clearSelection();
   }
   // Typing in a box keeps its own undo.
@@ -1549,6 +1566,100 @@ document.addEventListener('drop', e => {
     send({ type: 'move', item, target: drop.target, windowId }).then(smartSpaceToast);
   }
 });
+
+// Space icons reorder by dragging, but only after holding one still for a
+// moment, so a click that wobbles doesn't move a space. This follows the
+// pointer itself rather than using drag and drop: an icon can't reliably be
+// made draggable once the button is already down. While it runs, drag is set,
+// which holds off re-rendering, so the icons under the pointer stay put.
+const SPACE_HOLD_MS = 500;
+let spaceHold = null;   // { id, x, y, pointerId, timer }: pressed, not held long enough yet
+let spaceDrag = null;   // { id }: held, following the pointer
+let swallowClick = false;
+
+function spaceBtnFor(id) {
+  return els.spaces.querySelector(`.space-btn[data-space-id="${id}"]`);
+}
+
+els.spaces.addEventListener('pointerdown', e => {
+  const btn = e.button === 0 && !spaceDrag && e.target.closest('.space-btn');
+  if (!btn || layout.spaces.length < 2) return;
+  const hold = spaceHold = { id: btn.dataset.spaceId, x: e.clientX, y: e.clientY, pointerId: e.pointerId };
+  hold.timer = setTimeout(() => {
+    if (spaceHold !== hold) return;
+    spaceHold = null;
+    startSpaceDrag(hold);
+  }, SPACE_HOLD_MS);
+});
+
+function startSpaceDrag({ id, x, y, pointerId }) {
+  hideMenu();
+  drag = { type: 'space', id };
+  spaceDrag = { id };
+  document.body.classList.add('space-dragging');
+  // The drop line takes the color of the space being moved.
+  const sp = layout.spaces.find(s => s.id === id);
+  els.spaces.style.setProperty('--drop', COLOR_HEX[sp?.color] || COLOR_HEX.grey);
+  spaceBtnFor(id)?.classList.add('held');
+  moveSpaceDrag(x, y);
+  try { els.spaces.setPointerCapture(pointerId); } catch {}
+}
+
+// The held icon stays put; a line between icons shows where it would land.
+function moveSpaceDrag(x, y) {
+  const btn = document.elementFromPoint(x, y)?.closest('.space-btn');
+  if (!btn || btn.dataset.spaceId === spaceDrag.id) return clearIndicator();
+  const r = btn.getBoundingClientRect();
+  const position = x - r.left < r.width / 2 ? 'before' : 'after';
+  const cls = 'drop-' + position;
+  if (indicator?.el === btn && indicator.cls === cls) return;
+  clearIndicator();
+  btn.classList.add(cls);
+  indicator = { el: btn, cls, target: { refId: btn.dataset.spaceId, position } };
+}
+
+function endSpaceDrag(drop) {
+  if (!spaceDrag) return;
+  const { id } = spaceDrag;
+  const target = drop && indicator?.target;
+  spaceDrag = null;
+  document.body.classList.remove('space-dragging');
+  els.spaces.style.removeProperty('--drop');
+  spaceBtnFor(id)?.classList.remove('held');
+  endDrag();
+  if (target) send({ type: 'reorderSpace', id, ...target });
+}
+
+document.addEventListener('pointermove', e => {
+  if (spaceDrag) moveSpaceDrag(e.clientX, e.clientY);
+  else if (spaceHold && Math.hypot(e.clientX - spaceHold.x, e.clientY - spaceHold.y) > 4) cancelSpaceHold();
+});
+
+document.addEventListener('pointerup', () => {
+  cancelSpaceHold();
+  if (!spaceDrag) return;
+  // The click that comes with letting go mustn't switch spaces.
+  swallowClick = true;
+  setTimeout(() => { swallowClick = false; });
+  endSpaceDrag(true);
+});
+
+document.addEventListener('pointercancel', () => {
+  cancelSpaceHold();
+  endSpaceDrag(false);
+});
+
+document.addEventListener('click', e => {
+  if (!swallowClick) return;
+  swallowClick = false;
+  e.stopPropagation();
+  e.preventDefault();
+}, true);
+
+function cancelSpaceHold() {
+  if (spaceHold) clearTimeout(spaceHold.timer);
+  spaceHold = null;
+}
 
 function endDrag() {
   clearIndicator();
