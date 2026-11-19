@@ -294,6 +294,7 @@ body.dragging #favorites:empty::after {
 .folder .folder-icon .dot { fill: var(--muted); stroke: none; }
 
 .folder .title { font-weight: 500; }
+.row.revealed { background: color-mix(in srgb, var(--space) 28%, transparent); }
 
 .empty-hint {
   color: var(--muted);

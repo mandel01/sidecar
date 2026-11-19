@@ -5,7 +5,9 @@
 // it in the same box. Typing also lists sites from your history and, unless
 // turned off in Settings, Google's suggestions.
 
-import { COLOR_HEX, faviconFor, hostOf, SPEAKER_SVG } from './shared.js';
+import { COLOR_HEX, faviconFor, hostOf, SPEAKER_SVG, FOLDER_CLOSED_PATH } from './shared.js';
+
+const FOLDER_SVG = `<svg viewBox="0 0 16 16">${FOLDER_CLOSED_PATH}</svg>`;
 
 const windowId = Number(new URLSearchParams(location.search).get('window'));
 const input = document.getElementById('q');
@@ -206,12 +208,17 @@ function build() {
     const sc = score(text, words);
     if (sc) found.push({ sc, rank, item });
   };
+  // Where a pinned tab lives: its space, then any folders it's in.
+  const place = x => [x.space, ...(x.folders || [])].filter(Boolean).join(' › ');
   for (const c of commands()) add(`${c.name} ${c.keys || ''}`, 0, fromCommand(c));
   for (const t of data?.tabs || []) {
-    add(`${t.title} ${hostOf(t.url)}`, 1, { title: t.title, url: t.url, live: t, hint: `${hostOf(t.url)}  ${t.space}`, color: t.color, cmd: { action: 'focus-tab', arg: t.tabId } });
+    add(`${t.title} ${hostOf(t.url)}`, 1, { title: t.title, url: t.url, live: t, hint: `${hostOf(t.url)}  ${place(t)}`, color: t.color, cmd: { action: 'focus-tab', arg: t.tabId } });
   }
   for (const e of data?.entries || []) {
-    add(`${e.title} ${hostOf(e.url)}`, 2, { title: e.title, url: e.url, hint: `Pinned  ${e.space}`, color: e.color, cmd: { action: 'open-entry', arg: e.id } });
+    add(`${e.title} ${hostOf(e.url)}`, 2, { title: e.title, url: e.url, hint: `Pinned  ${place(e)}`, color: e.color, cmd: { action: 'open-entry', arg: e.id } });
+  }
+  for (const f of data?.folders || []) {
+    add(f.name, 2, { title: f.name, svg: FOLDER_SVG, hint: `Folder  ${place(f)}`, color: f.color, cmd: { action: 'reveal-folder', arg: f.id } });
   }
   for (const a of data?.archived || []) {
     add(`${a.title} ${hostOf(a.url)}`, 3, { title: a.title, url: a.url, hint: `Archived  ${a.space}`, color: a.color, archived: true, cmd: { action: 'restore-archived', arg: a.key } });

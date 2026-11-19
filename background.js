@@ -1328,12 +1328,26 @@ async function barTarget(s, windowId) {
 async function commandBarData(s, windowId) {
   const { tab, eid, fav, split, item } = await barTarget(s, windowId);
   const url = tab ? tabUrl(tab) : '';
-  const tabs = (await switcherList(s)).filter(t => t.tabId !== tab?.id);
+  // The folders each pinned node is in, outermost first, to show where it lives.
+  // Folders themselves can be found too, to show them in the sidebar.
+  const folders = new Map();
+  const folderList = [];
+  const mapFolders = (nodes, path, sp) => {
+    for (const n of nodes) {
+      folders.set(n.id, path);
+      if (n.type === 'folder') folderList.push({ id: n.id, name: n.name, folders: path, space: sp.icon || sp.name, color: sp.color });
+      if (n.children) mapFolders(n.children, n.type === 'folder' ? [...path, n.name] : path, sp);
+    }
+  };
+  for (const sp of s.layout.spaces) mapFolders(sp.pinned, [], sp);
+  const tabs = (await switcherList(s))
+    .filter(t => t.tabId !== tab?.id)
+    .map(t => ({ ...t, folders: folders.get(entryIdForTab(s, t.tabId)) || [] }));
   // Pinned tabs and favorites that aren't open can be found and opened too.
   const entries = [];
   const addEntry = (n, space) => {
     if (n.type !== 'tab' || s.runtime.bindings[n.id]) return;
-    entries.push({ id: n.id, title: n.customTitle || n.title || hostOf(n.url), url: n.url, space: space ? space.icon || space.name : '★', color: space?.color });
+    entries.push({ id: n.id, title: n.customTitle || n.title || hostOf(n.url), url: n.url, space: space ? space.icon || space.name : '★', color: space?.color, folders: folders.get(n.id) || [] });
   };
   for (const f of s.layout.favorites) addEntry(f, null);
   for (const sp of s.layout.spaces) walk(sp.pinned, n => addEntry(n, sp));
@@ -1362,6 +1376,7 @@ async function commandBarData(s, windowId) {
     spaces: s.layout.spaces.map(sp => ({ id: sp.id, name: sp.name, icon: sp.icon, color: sp.color })),
     tabs,
     entries,
+    folders: folderList,
     // Archived tabs can be found too; each is known by when it was archived plus its URL.
     archived: s.runtime.archived.map(a => {
       const space = spaceById(s, a.spaceId);
@@ -1381,6 +1396,21 @@ async function runBarAction(s, windowId, action, arg) {
     case 'search': return chrome.search.query({ text: arg, tabId: (await blankTab()).id });
     case 'focus-tab': return focusTab(arg);
     case 'open-entry': return activate(s, { kind: 'pinned', id: arg, windowId });
+    case 'reveal-folder': {
+      // Its space, opened down to it, and pointed out in the sidebar.
+      const f = findInSpaces(s, arg);
+      if (!f) return;
+      await switchSpace(s, windowId, f.spaceId);
+      // The folder and every folder it's in, opened.
+      const open = nodes => nodes.some(n => {
+        if (n.type !== 'folder' || (n.id !== arg && !open(n.children))) return false;
+        n.collapsed = false;
+        return true;
+      });
+      open(spaceById(s, f.spaceId).pinned);
+      chrome.runtime.sendMessage({ type: 'revealInSidebar', id: arg, windowId }).catch(() => {});
+      return;
+    }
     case 'restore-archived': {
       // Back into the space it was archived from.
       const i = s.runtime.archived.findIndex(a => archiveKey(a) === arg);

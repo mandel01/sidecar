@@ -1,7 +1,7 @@
 // Side panel UI. Reads state from chrome.storage.local, asks the background
 // worker to make every change, and re-renders whenever storage or tabs change.
 
-import { COLOR_HEX, GROUP_COLORS, ICON_PRESETS, FALLBACK_ICON, compactTitle, hostOf, faviconFor, walk, isNewTabUrl, SPEAKER_SVG } from './shared.js';
+import { COLOR_HEX, GROUP_COLORS, ICON_PRESETS, FALLBACK_ICON, compactTitle, hostOf, faviconFor, walk, isNewTabUrl, SPEAKER_SVG, FOLDER_CLOSED_PATH } from './shared.js';
 
 const $ = id => document.getElementById(id);
 const els = {
@@ -17,7 +17,6 @@ const els = {
   dragChip: $('drag-chip'),
 };
 
-const FOLDER_CLOSED_PATH = '<path d="M1.5 4.5v8a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H8L6.5 3.5h-4a1 1 0 0 0-1 1Z"/>';
 const FOLDER_SVG = {
   closed: `<svg class="folder-icon" viewBox="0 0 16 16">${FOLDER_CLOSED_PATH}</svg>`,
   open: '<svg class="folder-icon" viewBox="0 0 16 16"><path d="M1.5 12.5v-8a1 1 0 0 1 1-1h4L8 5h5a1 1 0 0 1 1 1v1.5"/><path d="M1.5 12.5l1.8-4.3a1 1 0 0 1 .9-.7h10.3a.6.6 0 0 1 .55.85l-1.75 4.55a1 1 0 0 1-.9.6H2.5a1 1 0 0 1-1-1Z"/></svg>',
@@ -142,7 +141,34 @@ function render() {
     pendingRename = null;
     if (row) startRename(row);
   }
+  applyReveal();
 }
+
+// A folder found in the command bar: scrolled to and highlighted for a moment.
+// The space switch and unfolding come as a re-render, maybe after the message,
+// so each render puts the highlight back until it's over.
+let reveal = null;
+let revealTimer = null;
+
+function applyReveal() {
+  if (!reveal) return;
+  const row = document.querySelector(`.row[data-id="${reveal.id}"]`);
+  if (!row) return;
+  row.classList.add('revealed');
+  row.scrollIntoView({ block: 'nearest' });
+}
+
+chrome.runtime.onMessage.addListener(msg => {
+  if (msg?.type !== 'revealInSidebar' || msg.windowId !== windowId) return;
+  document.querySelectorAll('.revealed').forEach(r => r.classList.remove('revealed'));
+  reveal = { id: msg.id };
+  applyReveal();
+  clearTimeout(revealTimer);
+  revealTimer = setTimeout(() => {
+    reveal = null;
+    document.querySelectorAll('.revealed').forEach(r => r.classList.remove('revealed'));
+  }, 1600);
+});
 
 function makeIcon(src) {
   const img = document.createElement('img');

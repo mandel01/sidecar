@@ -161,4 +161,6 @@ export function compactTitle(title, url) {
 
 // The speaker on tabs, the bottom bar and the command bar: waves while playing,
 // a red line once muted (CSS shows one or the other with .speaker / .muted).
+export const FOLDER_CLOSED_PATH = '<path d="M1.5 4.5v8a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H8L6.5 3.5h-4a1 1 0 0 0-1 1Z"/>';
+
 export const SPEAKER_SVG = '<svg viewBox="0 0 16 16"><path d="M2.5 6v4h2.5l3.5 3V3L5 6Z"/><path class="waves" d="M11 6.5a2.5 2.5 0 0 1 0 3M12.5 4.5a5 5 0 0 1 0 7"/><path class="slash" d="M2 2l12 12"/></svg>';
