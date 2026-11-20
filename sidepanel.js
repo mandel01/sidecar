@@ -15,6 +15,8 @@ const els = {
   toast: $('toast'),
   dialog: $('dialog'),
   dragChip: $('drag-chip'),
+  scroll: $('scroll'),
+  scrollFloor: $('scroll-floor'),
 };
 
 const FOLDER_SVG = {
@@ -121,6 +123,7 @@ function render() {
   }
   dirty = false;
   const space = currentSpace();
+  const scrollTop = els.scroll.scrollTop;
   document.documentElement.style.setProperty('--space', COLOR_HEX[space.color] || COLOR_HEX.grey);
   renderFavorites();
   renderHeader(space);
@@ -136,6 +139,7 @@ function render() {
   muteBtn.classList.toggle('quiet', !runtime?.muteMode && !playing);
   muteBtn.title = runtime?.muteMode ? 'All tabs are muted, including new ones. Click to unmute them.' : 'Mute all tabs, including new ones';
   applySelection();
+  applyScrollFloor(space, scrollTop);
   if (pendingRename) {
     const row = document.querySelector(`.row[data-id="${pendingRename}"]`);
     pendingRename = null;
@@ -169,6 +173,45 @@ chrome.runtime.onMessage.addListener(msg => {
     document.querySelectorAll('.revealed').forEach(r => r.classList.remove('revealed'));
   }, 1600);
 });
+
+// Closing a folder near the bottom would pull everything below it up, and with
+// little below it, scroll the list so the rows above it slide down. Instead the
+// list keeps its height, with blank space at the bottom, so the folder stays
+// where it was clicked. That space goes once it's scrolled out of view, or on
+// switching spaces or hiding the panel.
+let scrollFloor = null; // { spaceId, height }
+
+function holdScroll() {
+  const height = els.scroll.scrollHeight;
+  scrollFloor = { spaceId: currentSpace().id, height: Math.max(height, scrollFloor?.height || 0) };
+}
+
+function applyScrollFloor(space, scrollTop) {
+  if (scrollFloor && scrollFloor.spaceId !== space.id) scrollFloor = null;
+  els.scrollFloor.style.height = '0px';
+  if (!scrollFloor) return;
+  // The unpinned area stretches and shrinks around the blank space, so adding
+  // it doesn't add its full height: adjust until the list is as tall as before.
+  let h = 0;
+  for (let i = 0; i < 4; i++) {
+    const short = scrollFloor.height - els.scroll.scrollHeight;
+    if (!short) break;
+    h = Math.max(0, h + short);
+    els.scrollFloor.style.height = h + 'px';
+  }
+  els.scroll.scrollTop = scrollTop;
+}
+
+function dropScrollFloor() {
+  scrollFloor = null;
+  els.scrollFloor.style.height = '0px';
+}
+
+els.scroll.addEventListener('scroll', () => {
+  const sc = els.scroll;
+  if (scrollFloor && sc.scrollTop + sc.clientHeight <= sc.scrollHeight - els.scrollFloor.offsetHeight) dropScrollFloor();
+}, { passive: true });
+document.addEventListener('visibilitychange', () => { if (document.hidden) dropScrollFloor(); });
 
 function makeIcon(src) {
   const img = document.createElement('img');
@@ -1284,7 +1327,10 @@ document.addEventListener('click', e => {
   }
   if (row && selection.size) clearSelection();
   if (row) {
-    if (row.dataset.type === 'folder') send({ type: 'toggleFolder', id: row.dataset.id });
+    if (row.dataset.type === 'folder') {
+      holdScroll();
+      send({ type: 'toggleFolder', id: row.dataset.id });
+    }
     else send({ type: 'activate', kind: row.dataset.kind === 'tab' ? 'tab' : 'entry', id: row.dataset.id, windowId });
     return;
   }

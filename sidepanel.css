@@ -161,6 +161,8 @@ body.dragging #favorites:empty::after {
 
 /* Rows ------------------------------------------------------------------ */
 
+#scroll-floor { flex: none; }
+
 #scroll {
   flex: 1;
   overflow-y: auto;
