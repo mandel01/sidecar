@@ -687,7 +687,13 @@ function fillMenu(el, items) {
       b.textContent = it.text;
       if (it.sub) {
         b.append(Object.assign(document.createElement('span'), { className: 'chevron', textContent: '›' }));
-        b.addEventListener('mouseenter', () => showSubmenu(b, it.sub));
+        // Pointing opens it after a moment, so passing over on the way to
+        // another item doesn't; clicking opens it at once.
+        b.addEventListener('mouseenter', () => {
+          clearTimeout(submenuTimer);
+          submenuTimer = setTimeout(() => showSubmenu(b, it.sub), SUBMENU_DELAY_MS);
+        });
+        b.addEventListener('mouseleave', () => clearTimeout(submenuTimer));
         b.addEventListener('click', () => showSubmenu(b, it.sub));
       } else {
         b.addEventListener('click', () => {
@@ -705,8 +711,12 @@ function fillMenu(el, items) {
 // To the right of its item, or if the panel is too narrow, against the right
 // edge just below the item, so the item stays visible.
 // It lives inside the menu, so clicks in it don't count as clicks outside.
+const SUBMENU_DELAY_MS = 300;
+let submenuTimer = null;
+
 function showSubmenu(btn, items) {
   closeSubmenu();
+  if (els.menu.hidden || !btn.isConnected) return;
   const sub = Object.assign(document.createElement('div'), { className: 'submenu' });
   fillMenu(sub, items);
   els.menu.append(sub);
@@ -723,6 +733,7 @@ function showSubmenu(btn, items) {
 }
 
 function closeSubmenu() {
+  clearTimeout(submenuTimer);
   els.menu.querySelector('.submenu')?.remove();
   els.menu.querySelector('.has-sub.open')?.classList.remove('open');
 }
